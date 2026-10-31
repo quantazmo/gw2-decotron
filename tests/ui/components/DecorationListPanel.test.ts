@@ -8,6 +8,7 @@ import { SelectionStore } from '../../../src/ui/stores/SelectionStore.ts';
 import { EventBus } from '../../../src/ui/EventBus.ts';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Decoration } from '../../../src/domain/Decoration.ts';
+import { AccountDecorationInventory } from '../../../src/domain/AccountDecorationInventory.js';
 import { Layer } from '../../../src/domain/Layer.ts';
 import { AppState, AppStore } from '../../../src/ui/stores/AppStore.js';
 import ContextMenu from '../../../src/ui/components/ContextMenu.ts';
@@ -129,6 +130,21 @@ describe('DecorationListPanel', () => {
 
             const items = container.querySelectorAll('.decoration-list__item');
             expect(items.length).toBe(1);
+        });
+
+        test('shows a check only when account inventory covers every visible instance of a decoration', () => {
+            const layers = [
+                createLayer('l1', 'Layer 1', [createDecoration('35', 'Oak Tree')]),
+                createLayer('l2', 'Layer 2', [createDecoration('35', 'Oak Tree')])
+            ];
+            appStore = createMockAppStore(layers);
+            const panel = new DecorationListPanel(container, appStore, selectionStore, eventBus);
+            panel.setAccountInventory(new AccountDecorationInventory([{ id: 35, count: 2 }]));
+
+            expect(container.querySelectorAll('.decoration-list__availability-check').length).toBe(2);
+
+            panel.setAccountInventory(new AccountDecorationInventory([{ id: 35, count: 1 }]));
+            expect(container.querySelectorAll('.decoration-list__availability-check').length).toBe(0);
         });
     });
 

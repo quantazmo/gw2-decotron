@@ -8,6 +8,7 @@
 
 import AppService from '../../application/AppService.js';
 import { Decoration } from '../../domain/Decoration.js';
+import { AccountDecorationInventory } from '../../domain/AccountDecorationInventory.js';
 import { Layer } from '../../domain/Layer.js';
 import { addClass, addInputElement, createElement, empty } from '../domHelpers.js';
 import { EventBus } from '../EventBus.js';
@@ -25,6 +26,7 @@ class DecorationListPanel {
     selectionStore: SelectionStore;
     eventBus: EventBus;
     appService?: AppService;
+    private _accountInventory: AccountDecorationInventory | null;
 
     /** Anchor decoration ID for Shift+Click range */
     _anchorId?: string;
@@ -52,12 +54,13 @@ class DecorationListPanel {
     _sortHandler!: EventListener;
 
 
-    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService) {
+    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null) {
         this.container = containerElement;
         this.appStore = appStore;
         this.selectionStore = selectionStore;
         this.eventBus = eventBus;
         this.appService = appService || undefined;
+        this._accountInventory = accountInventory;
 
         this.initialize();
         this.subscribeToChanges();
@@ -107,18 +110,22 @@ class DecorationListPanel {
 
         const layers = state.layers || [];
         const searchFragments = this._getSearchFragments();
+        const requiredCounts = new Map<number, number>();
+
+        for (const layer of layers) {
+            if (!layer.isVisible) continue;
+            for (const decoration of this._getLayerDecorations(layer)) {
+                const decorationId = Number(decoration.id);
+                if (Number.isSafeInteger(decorationId)) {
+                    requiredCounts.set(decorationId, (requiredCounts.get(decorationId) ?? 0) + 1);
+                }
+            }
+        }
 
         for (const layer of layers) {
             if (!layer.isVisible) continue;
 
-            let decorations: Decoration[] = [];
-            if (typeof layer.getAllDecorations === 'function') {
-                decorations = layer.getAllDecorations();
-            } else if (Array.isArray(layer.decorations)) {
-                decorations = layer.decorations;
-            } else if (layer.decorations instanceof Map) {
-                decorations = Array.from(layer.decorations.values());
-            }
+            const decorations = this._getLayerDecorations(layer);
 
             const filteredDecorations = this._filterDecorations(decorations, searchFragments);
             const sortedDecorations = this._sortDecorations(filteredDecorations);
@@ -177,13 +184,25 @@ class DecorationListPanel {
             if (!isCollapsed) {
                 for (const decoration of sortedDecorations) {
                     this._orderedIds.push(decoration.uid);
-                    const item = this._createDecorationItem(decoration, layer.id);
+                    const item = this._createDecorationItem(decoration, layer.id, requiredCounts);
                     itemsWrapper.appendChild(item);
                 }
             }
         }
 
         this._updateSelectionHighlights();
+    }
+
+    private _getLayerDecorations(layer: Layer): Decoration[] {
+        if (typeof layer.getAllDecorations === 'function') return layer.getAllDecorations();
+        if (Array.isArray(layer.decorations)) return layer.decorations;
+        if (layer.decorations instanceof Map) return Array.from(layer.decorations.values());
+        return [];
+    }
+
+    setAccountInventory(inventory: AccountDecorationInventory | null): void {
+        this._accountInventory = inventory;
+        this.render(this.appStore.getState());
     }
 
     /**
@@ -270,7 +289,7 @@ class DecorationListPanel {
     /**
      * Create a single decoration list item element
      */
-    private _createDecorationItem(decoration: Decoration, layerId: string): HTMLElement {
+    private _createDecorationItem(decoration: Decoration, layerId: string, requiredCounts: Map<number, number>): HTMLElement {
         const item = createElement('div', {
             className: 'decoration-list__item',
             attributes: {
@@ -285,6 +304,20 @@ class DecorationListPanel {
             textContent: decoration.name || decoration.id,
             parent: item
         });
+
+        const decorationId = Number(decoration.id);
+        const requiredCount = requiredCounts.get(decorationId) ?? 0;
+        if (this._accountInventory && this._accountInventory.getCount(decorationId) >= requiredCount) {
+            createElement('span', {
+                className: 'decoration-list__availability-check',
+                textContent: '✓',
+                attributes: {
+                    'aria-label': 'You have this decoration',
+                    'title': 'You have this decoration'
+                },
+                parent: item
+            });
+        }
 
         // Click handler for selection
         item.addEventListener('click', (e) => {

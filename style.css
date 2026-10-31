@@ -1959,6 +1959,14 @@ button:active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.decoration-list__availability-check {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  color: #2e9b55;
+  font-weight: 700;
 }
 
 /* ── MapViewer selection highlight ──────────────────────────────────── */
@@ -2090,8 +2098,8 @@ button:active {
   outline-offset: 2px;
 }
 
-/* ── DecorationReportDialog ─────────────────────────────────────────── */
-.decoration-report-dialog {
+/* ── CraftMissingDecorationsDialog ──────────────────────────────────── */
+.craft-missing-decorations-dialog {
   border: none;
   border-radius: 8px;
   padding: 0;
@@ -2102,11 +2110,11 @@ button:active {
   background: var(--surface-bg);
 }
 
-.decoration-report-dialog::backdrop {
+.craft-missing-decorations-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
 
-.decoration-report-dialog__title {
+.craft-missing-decorations-dialog__title {
   margin: 0;
   padding: 20px 24px 8px;
   font-size: 18px;
@@ -2114,29 +2122,29 @@ button:active {
   color: var(--text-primary);
 }
 
-.decoration-report-dialog__map-row {
+.craft-missing-decorations-dialog__map-row {
   margin: 0;
   padding: 0 24px 16px;
   font-size: 14px;
   color: var(--text-secondary);
 }
 
-.decoration-report-dialog__map-label {
+.craft-missing-decorations-dialog__map-label {
   font-weight: 500;
 }
 
-.decoration-report-dialog__map-name {
+.craft-missing-decorations-dialog__map-name {
   color: var(--text-primary);
 }
 
-.decoration-report-dialog__layer-list {
+.craft-missing-decorations-dialog__layer-list {
   padding: 0 24px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.decoration-report-dialog__layer-row {
+.craft-missing-decorations-dialog__layer-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2145,17 +2153,17 @@ button:active {
   border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
 }
 
-.decoration-report-dialog__layer-name {
+.craft-missing-decorations-dialog__layer-name {
   color: var(--text-primary);
   font-weight: 500;
 }
 
-.decoration-report-dialog__layer-count {
+.craft-missing-decorations-dialog__layer-count {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.decoration-report-dialog__empty-msg {
+.craft-missing-decorations-dialog__empty-msg {
   margin: 0;
   padding: 8px 24px 16px;
   font-size: 14px;
@@ -2163,41 +2171,57 @@ button:active {
   font-style: italic;
 }
 
-.decoration-report-dialog__actions {
+.craft-missing-decorations-dialog__actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 8px;
   padding: 12px 24px 20px;
 }
 
-.decoration-report-dialog__ok {
+.craft-missing-decorations-dialog__craft,
+.craft-missing-decorations-dialog__cancel {
   padding: 8px 20px;
-  border: 1px solid #007bff;
   border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  background: #007bff;
-  color: #fff;
   transition: background-color 0.15s, border-color 0.15s;
 }
 
-.decoration-report-dialog__ok:hover {
+.craft-missing-decorations-dialog__craft {
+  border: 1px solid #007bff;
+  background: #007bff;
+  color: #fff;
+}
+
+.craft-missing-decorations-dialog__craft:hover {
   background: #0056b3;
   border-color: #0056b3;
 }
 
-.decoration-report-dialog__ok:focus-visible {
+.craft-missing-decorations-dialog__cancel {
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.craft-missing-decorations-dialog__cancel:hover {
+  background: var(--hover-list-bg);
+}
+
+.craft-missing-decorations-dialog__craft:focus-visible,
+.craft-missing-decorations-dialog__cancel:focus-visible {
   outline: 2px solid #4a90d9;
   outline-offset: 2px;
 }
 
-.decoration-report-dialog__missing-section {
+.craft-missing-decorations-dialog__missing-section {
   margin: 4px 24px 0;
   border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
   padding-top: 12px;
 }
 
-.decoration-report-dialog__missing-heading {
+.craft-missing-decorations-dialog__missing-heading {
   margin: 0 0 8px;
   padding: 0;
   font-size: 13px;
@@ -2207,28 +2231,46 @@ button:active {
   letter-spacing: 0.04em;
 }
 
-.decoration-report-dialog__missing-list {
+.craft-missing-decorations-dialog__missing-list {
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
   border-radius: 4px;
 }
 
-.decoration-report-dialog__missing-item {
+.craft-missing-decorations-dialog__select-all {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.craft-missing-decorations-dialog__select-all input,
+.craft-missing-decorations-dialog__missing-checkbox {
+  flex: 0 0 auto;
+  accent-color: #47a568;
+}
+
+.craft-missing-decorations-dialog__missing-item {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
   padding: 4px 8px;
   font-size: 13px;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  cursor: pointer;
 }
 
-.decoration-report-dialog__missing-item:last-child {
+.craft-missing-decorations-dialog__missing-item:last-child {
   border-bottom: none;
 }
 
-.decoration-report-dialog__missing-name {
+.craft-missing-decorations-dialog__missing-name {
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
@@ -2236,7 +2278,7 @@ button:active {
   white-space: nowrap;
 }
 
-.decoration-report-dialog__missing-count {
+.craft-missing-decorations-dialog__missing-count {
   flex-shrink: 0;
   margin-left: 8px;
   font-variant-numeric: tabular-nums;

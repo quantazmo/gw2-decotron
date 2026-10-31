@@ -57,8 +57,7 @@ export class DockRegion {
             sortBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="19" x2="7" y2="5"/><polyline points="3 9 7 5 11 9"/><line x1="17" y1="5" x2="17" y2="19"/><polyline points="13 15 17 19 21 15"/></svg>`;
 
             const sortOptions: Array<{ mode: 'oldest' | 'newest' | 'az' | 'za'; label: string }> = [
-                { mode: 'oldest', label: 'Oldest first' },
-                { mode: 'newest', label: 'Newest first' },
+                { mode: 'oldest', label: 'File Order' },
                 { mode: 'az', label: 'A \u2192 Z' },
                 { mode: 'za', label: 'Z \u2192 A' },
             ];

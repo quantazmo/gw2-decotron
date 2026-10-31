@@ -34,7 +34,7 @@ import { MergeLayerHandler } from '../application/handlers/MergeLayerHandler.js'
 import { DeleteDecorationsHandler } from '../application/handlers/DeleteDecorationsHandler.js';
 import { ExportLayersHandler } from '../application/handlers/ExportLayersHandler.js';
 import { ExportDialog } from '../ui/components/ExportDialog.js';
-import { DecorationReportDialog } from '../ui/components/DecorationReportDialog.js';
+import { CraftMissingDecorationsDialog } from '../ui/components/CraftMissingDecorationsDialog.js';
 import { ConfirmDialog } from '../ui/components/ConfirmDialog.js';
 import { ContextMenu } from '../ui/components/ContextMenu.js';
 import { DecorationInfoDialog } from '../ui/components/DecorationInfoDialog.js';
@@ -74,7 +74,7 @@ interface ApplicationContext {
     contextMenu?: ContextMenu;
     _keydownHandler?: (event: KeyboardEvent) => void;
     exportDialog?: ExportDialog;
-    decorationReportDialog?: DecorationReportDialog;
+    craftMissingDecorationsDialog?: CraftMissingDecorationsDialog;
     settingsRepository?: SettingsRepository;
     settingsDialog?: SettingsDialog;
     themeManager?: ThemeManager;
@@ -463,15 +463,15 @@ export async function initializeApplication(): Promise<ApplicationContext> {
         }
     });
 
-    // Create DecorationReportDialog and wire ribbon:report-requested event
-    console.log('[ApplicationInitializer]   ↳ Creating DecorationReportDialog...');
-    const decorationReportDialog = new DecorationReportDialog();
-    context.decorationReportDialog = decorationReportDialog;
+    // Create CraftMissingDecorationsDialog and wire ribbon:report-requested event
+    console.log('[ApplicationInitializer]   ↳ Creating CraftMissingDecorationsDialog...');
+    const craftMissingDecorationsDialog = new CraftMissingDecorationsDialog();
+    context.craftMissingDecorationsDialog = craftMissingDecorationsDialog;
     eventBus.subscribe<{ layout: HomesteadLayout | null }>('ribbon:report-requested', async ({ layout }) => {
         if (!layout) return;
         const mapName = layout.map?.name ?? '—';
         const layers = layout.layers ? Array.from(layout.layers.values()) : [];
-        await decorationReportDialog.show(mapName, layers, context.accountDecorationInventory ?? null);
+        await craftMissingDecorationsDialog.show(mapName, layers, context.accountDecorationInventory ?? null);
     });
 
     // Create SettingsRepository and SettingsDialog, wire ribbon:settings-requested event
@@ -488,22 +488,36 @@ export async function initializeApplication(): Promise<ApplicationContext> {
     // Apply saved theme immediately on startup
     themeManager.apply(settingsRepository.load().theme ?? 'system');
 
-    // Load account decoration inventory on startup if an API key is set
-    console.log('[ApplicationInitializer]   ↳ Loading account decoration inventory...');
-    context.accountDecorationInventory = null;
-    const startupApiKey = settingsRepository.load().apiKey;
-    if (startupApiKey) {
+    let inventoryRequestId = 0;
+    const refreshAccountDecorationInventory = async (apiKey: string): Promise<void> => {
+        const requestId = ++inventoryRequestId;
+        context.accountDecorationInventory = null;
+        context.decorationListPanel?.setAccountInventory(null);
+        if (!apiKey) {
+            const emptyInventory = new AccountDecorationInventory([]);
+            context.accountDecorationInventory = emptyInventory;
+            context.decorationListPanel?.setAccountInventory(emptyInventory);
+            return;
+        }
+
         try {
             const apiAdapter = infrastructure.getApiAdapter();
-            const entries = await apiAdapter.getAccountHomesteadDecorations(startupApiKey);
+            const entries = await apiAdapter.getAccountHomesteadDecorations(apiKey);
+            if (requestId !== inventoryRequestId) return;
             if (Array.isArray(entries)) {
                 context.accountDecorationInventory = new AccountDecorationInventory(entries);
                 console.log(`[ApplicationInitializer]   ↳ Account inventory loaded: ${context.accountDecorationInventory.size} decoration type(s)`);
             }
         } catch (err) {
+            if (requestId !== inventoryRequestId) return;
             console.warn('[ApplicationInitializer] ⚠️  Failed to load account decoration inventory:', err instanceof Error ? err.message : String(err));
         }
-    }
+        context.decorationListPanel?.setAccountInventory(context.accountDecorationInventory ?? null);
+    };
+
+    // Load account decoration inventory on startup if an API key is set
+    console.log('[ApplicationInitializer]   ↳ Loading account decoration inventory...');
+    await refreshAccountDecorationInventory(settingsRepository.load().apiKey);
 
     eventBus.subscribe('ribbon:settings-requested', async () => {
         const current = settingsRepository.load();
@@ -511,6 +525,9 @@ export async function initializeApplication(): Promise<ApplicationContext> {
         if (updated !== null) {
             settingsRepository.save(updated);
             themeManager.apply(updated.theme ?? 'system');
+            if (updated.apiKey !== current.apiKey) {
+                void refreshAccountDecorationInventory(updated.apiKey);
+            }
         }
     });
 
@@ -591,7 +608,7 @@ export async function initializeApplication(): Promise<ApplicationContext> {
     const decorationListContainer = document.getElementById('panel-content-decoration-list');
     if (decorationListContainer) {
         console.log('[ApplicationInitializer]   ↳ Creating DecorationListPanel...');
-        const decorationListPanel = new DecorationListPanel(decorationListContainer, appStoreInstance, selectionStore, eventBus, appService);
+        const decorationListPanel = new DecorationListPanel(decorationListContainer, appStoreInstance, selectionStore, eventBus, appService, context.accountDecorationInventory ?? null);
         context.decorationListPanel = decorationListPanel;
     }
 

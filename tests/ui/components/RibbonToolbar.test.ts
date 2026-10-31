@@ -410,7 +410,7 @@ describe('RibbonToolbar', () => {
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Report group
+    // Crafting group
     // ─────────────────────────────────────────────────────────────────────────
 
     test('built toolbar contains 7 groups including GitHub', () => {
@@ -420,36 +420,36 @@ describe('RibbonToolbar', () => {
         expect(groups.length).toBe(6); // File, View, Edit, Tools, Report, GitHub
     });
 
-    test('ribbon toolbar contains a Report group', () => {
+    test('ribbon toolbar contains a Crafting group', () => {
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore);
         const el = toolbar.getElement();
-        const reportGroup = el.querySelector('.ribbon-group[data-group="report"]');
-        expect(reportGroup).not.toBeNull();
-        const label = reportGroup.querySelector('.ribbon-group-label');
-        expect(label.textContent).toBe('Report');
+        const craftingGroup = el.querySelector('.ribbon-group[data-group="crafting"]');
+        expect(craftingGroup).not.toBeNull();
+        const label = craftingGroup.querySelector('.ribbon-group-label');
+        expect(label.textContent).toBe('Crafting');
     });
 
-    test('Report group contains a Decoration Report button', () => {
+    test('Crafting group contains a Craft Missing Decorations button', () => {
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore);
         const btn = toolbar.getElement().querySelector('[data-action="ribbon-decoration-report"]');
         expect(btn).not.toBeNull();
-        expect(btn.getAttribute('aria-label')).toBe('Decoration Report');
+        expect(btn.getAttribute('aria-label')).toBe('Craft Missing Decorations');
     });
 
-    test('Decoration Report button is disabled when no layout loaded', () => {
+    test('Craft Missing Decorations button is disabled when no layout loaded', () => {
         const toolbar = new RibbonToolbar(appService, makeAppStore(null), zoomStore);
         toolbar.getElement();
         expect(toolbar._reportBtn.disabled).toBe(true);
     });
 
-    test('Decoration Report button is enabled when layout exists', () => {
+    test('Craft Missing Decorations button is enabled when layout exists', () => {
         const layout = { id: 't1' };
         const toolbar = new RibbonToolbar(appService, makeAppStore(layout), zoomStore);
         toolbar.getElement();
         expect(toolbar._reportBtn.disabled).toBe(false);
     });
 
-    test('Decoration Report button click publishes ribbon:report-requested', () => {
+    test('Craft Missing Decorations button click publishes ribbon:report-requested', () => {
         const layout = {
             id: 't1',
             map: { name: 'Gilded Hollow' },
@@ -461,7 +461,7 @@ describe('RibbonToolbar', () => {
         expect(eventBus.publish).toHaveBeenCalledWith('ribbon:report-requested', expect.objectContaining({ layout }));
     });
 
-    test('Decoration Report button does nothing when no layout', () => {
+    test('Craft Missing Decorations button does nothing when no layout', () => {
         const toolbar = new RibbonToolbar(appService, makeAppStore(null), zoomStore, eventBus);
         toolbar.getElement().querySelector('[data-action="ribbon-decoration-report"]').click();
         expect(eventBus.publish).not.toHaveBeenCalledWith('ribbon:report-requested', expect.anything());

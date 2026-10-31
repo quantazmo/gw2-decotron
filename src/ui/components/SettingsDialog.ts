@@ -102,7 +102,7 @@ export class SettingsDialog {
         const descEl = document.createElement('p');
         descEl.classList.add('settings-dialog__desc');
         descEl.id = descId;
-        descEl.textContent = 'Configure application settings.';
+        descEl.textContent = 'Configure application settings. Settings are stored in local browser storage.';
 
         // Form body
         const formEl = document.createElement('div');

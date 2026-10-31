@@ -1,5 +1,5 @@
 import { LoadFromUrlDialog } from './LoadFromUrlDialog.js';
-import { DecorationReportDialog } from './DecorationReportDialog.js';
+import { CraftMissingDecorationsDialog } from './CraftMissingDecorationsDialog.js';
 import { AppService } from '../../application/AppService.ts';
 import { AppStore } from '../stores/AppStore.ts';
 import { ZoomStore } from '../stores/ZoomStore.ts';
@@ -39,7 +39,7 @@ export class RibbonToolbar {
     private _selectBtn: HTMLButtonElement | null;
     private _reportBtn: HTMLButtonElement | null;
     private _loadFromUrlDialog: LoadFromUrlDialog | null;
-    private _decorationReportDialog: DecorationReportDialog | null;
+    private _craftMissingDecorationsDialog: CraftMissingDecorationsDialog | null;
     private _unsubscribers: Array<() => void>;
 
     /**
@@ -66,7 +66,7 @@ export class RibbonToolbar {
         this._selectBtn = null;
         this._reportBtn = null;
         this._loadFromUrlDialog = null;
-        this._decorationReportDialog = null;
+        this._craftMissingDecorationsDialog = null;
 
         /** @type {Function[]} cleanup callbacks */
         this._unsubscribers = [];
@@ -122,8 +122,8 @@ export class RibbonToolbar {
                 btn => { this._selectBtn = btn; }),
         ]));
 
-        toolbar.appendChild(this._createGroup('Report', [
-            this._makeBtn('Decoration Report', 'ribbon-decoration-report', () => this._onReport(),
+        toolbar.appendChild(this._createGroup('Crafting', [
+            this._makeBtn('Craft Missing Decorations', 'ribbon-decoration-report', () => this._onReport(),
                 btn => { this._reportBtn = btn; }),
         ]));
 

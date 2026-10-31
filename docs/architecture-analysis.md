@@ -577,7 +577,7 @@ Drag-drop overlay for XML layout loading. Validates XML before loading via AppSe
 | `ContextMenu.ts` | Right-click context menu |
 | `DecorationInfoDialog.ts` | Decoration detail view |
 | `DecorationListPanel.ts` | Searchable decoration list |
-| `DecorationReportDialog.ts` | Export statistics report |
+| `CraftMissingDecorationsDialog.ts` | Decoration crafting report |
 | `SettingsDialog.ts` | User settings panel |
 | `LayerColorDialog.ts` | Color picker for layers |
 
