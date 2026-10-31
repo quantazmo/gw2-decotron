@@ -1955,6 +1955,20 @@ button:active {
   outline-offset: -2px;
 }
 
+.decoration-list__item-icon-slot {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  margin-right: 6px;
+}
+
+.decoration-list__item-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
 .decoration-list__item-name {
   overflow: hidden;
   text-overflow: ellipsis;

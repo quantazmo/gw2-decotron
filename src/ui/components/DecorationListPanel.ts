@@ -10,6 +10,7 @@ import AppService from '../../application/AppService.js';
 import { Decoration } from '../../domain/Decoration.js';
 import { AccountDecorationInventory } from '../../domain/AccountDecorationInventory.js';
 import { Layer } from '../../domain/Layer.js';
+import type { Gw2ApiAdapter } from '../../infrastructure/adapters/Gw2ApiAdapter.js';
 import { addClass, addInputElement, createElement, empty } from '../domHelpers.js';
 import { EventBus } from '../EventBus.js';
 import { AppState, AppStore } from '../stores/AppStore.js';
@@ -27,6 +28,9 @@ class DecorationListPanel {
     eventBus: EventBus;
     appService?: AppService;
     private _accountInventory: AccountDecorationInventory | null;
+    private _apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations'>;
+    private _decorationIcons: Map<number, string> = new Map();
+    private _requestedDecorationIds: Set<number> = new Set();
 
     /** Anchor decoration ID for Shift+Click range */
     _anchorId?: string;
@@ -54,13 +58,14 @@ class DecorationListPanel {
     _sortHandler!: EventListener;
 
 
-    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null) {
+    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null, apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations'>) {
         this.container = containerElement;
         this.appStore = appStore;
         this.selectionStore = selectionStore;
         this.eventBus = eventBus;
         this.appService = appService || undefined;
         this._accountInventory = accountInventory;
+        this._apiAdapter = apiAdapter;
 
         this.initialize();
         this.subscribeToChanges();
@@ -111,16 +116,20 @@ class DecorationListPanel {
         const layers = state.layers || [];
         const searchFragments = this._getSearchFragments();
         const requiredCounts = new Map<number, number>();
+        const visibleDecorations: Decoration[] = [];
 
         for (const layer of layers) {
             if (!layer.isVisible) continue;
             for (const decoration of this._getLayerDecorations(layer)) {
+                visibleDecorations.push(decoration);
                 const decorationId = Number(decoration.id);
                 if (Number.isSafeInteger(decorationId)) {
                     requiredCounts.set(decorationId, (requiredCounts.get(decorationId) ?? 0) + 1);
                 }
             }
         }
+
+        this._loadDecorationIcons(visibleDecorations);
 
         for (const layer of layers) {
             if (!layer.isVisible) continue;
@@ -299,6 +308,20 @@ class DecorationListPanel {
             }
         });
 
+        const iconSlot = createElement('span', {
+            className: 'decoration-list__item-icon-slot',
+            attributes: { 'aria-hidden': 'true' },
+            parent: item
+        });
+        const iconUrl = this._decorationIcons.get(Number(decoration.id));
+        if (iconUrl) {
+            createElement('img', {
+                className: 'decoration-list__item-icon',
+                attributes: { src: iconUrl, alt: '', loading: 'lazy' },
+                parent: iconSlot
+            });
+        }
+
         const nameSpan = createElement('span', {
             className: 'decoration-list__item-name',
             textContent: decoration.name || decoration.id,
@@ -341,6 +364,25 @@ class DecorationListPanel {
         });
 
         return item;
+    }
+
+    private _loadDecorationIcons(decorations: Decoration[]): void {
+        if (!this._apiAdapter) return;
+
+        const ids = [...new Set(decorations
+            .map(decoration => Number(decoration.id))
+            .filter(id => Number.isSafeInteger(id) && !this._requestedDecorationIds.has(id)))];
+        if (ids.length === 0) return;
+
+        ids.forEach(id => this._requestedDecorationIds.add(id));
+        void this._apiAdapter.getHomesteadDecorations(ids, 'en').then(results => {
+            for (const decoration of results ?? []) {
+                if (decoration.icon) this._decorationIcons.set(decoration.id, decoration.icon);
+            }
+            this.render(this.appStore.getState());
+        }).catch(() => {
+            ids.forEach(id => this._requestedDecorationIds.delete(id));
+        });
     }
 
     /**

@@ -25,6 +25,12 @@ export interface Gw2ApiMapData {
     map_rect?: Gw2CoordinateRect;
 }
 
+export interface Gw2ApiHomesteadDecoration {
+    id: number;
+    name: string;
+    icon?: string;
+}
+
 export interface Gw2ApiFloorMapData {
     continent_rect: Gw2CoordinateRect;
     map_rect: Gw2CoordinateRect;
@@ -107,6 +113,20 @@ export class Gw2ApiAdapter {
     async getAccountHomesteadDecorations(apiKey: string): Promise<Array<{ id: number; count: number }> | null> {
         return this._callWithRetry<Array<{ id: number; count: number }>>(
             `v2/account/homestead/decorations?access_token=${encodeURIComponent(apiKey)}`
+        );
+    }
+
+    /**
+     * Get public metadata for homestead decorations.
+     * @param {number[]} ids - Decoration IDs to fetch
+     * @param {string} lang - API language
+     */
+    async getHomesteadDecorations(ids: number[], lang = 'en'): Promise<Gw2ApiHomesteadDecoration[] | null> {
+        const uniqueIds = [...new Set(ids.filter(Number.isSafeInteger))];
+        if (uniqueIds.length === 0) return [];
+
+        return this._callWithRetry<Gw2ApiHomesteadDecoration[]>(
+            `v2/homestead/decorations?ids=${uniqueIds.join(',')}&lang=${encodeURIComponent(lang)}`
         );
     }
 

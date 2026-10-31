@@ -608,7 +608,7 @@ export async function initializeApplication(): Promise<ApplicationContext> {
     const decorationListContainer = document.getElementById('panel-content-decoration-list');
     if (decorationListContainer) {
         console.log('[ApplicationInitializer]   ↳ Creating DecorationListPanel...');
-        const decorationListPanel = new DecorationListPanel(decorationListContainer, appStoreInstance, selectionStore, eventBus, appService, context.accountDecorationInventory ?? null);
+        const decorationListPanel = new DecorationListPanel(decorationListContainer, appStoreInstance, selectionStore, eventBus, appService, context.accountDecorationInventory ?? null, infrastructure.getApiAdapter());
         context.decorationListPanel = decorationListPanel;
     }
 

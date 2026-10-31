@@ -375,4 +375,26 @@ describe('Gw2ApiAdapter', () => {
             expect(result).toBeNull();
         });
     });
+
+    describe('getHomesteadDecorations', () => {
+        it('should fetch metadata for multiple decoration IDs in one request', async () => {
+            const mockDecorations = [{ id: 327, name: 'Kodan Dining Chair', icon: 'https://render.guildwars2.com/icon.png' }];
+            global.fetch = vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: vi.fn().mockResolvedValue(mockDecorations)
+            });
+
+            const adapter = new Gw2ApiAdapter();
+            const promise = adapter.getHomesteadDecorations([327, 327, 328]);
+            vi.runAllTimers();
+            const result = await promise;
+
+            expect(result).toEqual(mockDecorations);
+            expect(global.fetch).toHaveBeenCalledWith(
+                'https://api.guildwars2.com/v2/homestead/decorations?ids=327,328&lang=en',
+                expect.objectContaining({ signal: expect.any(AbortSignal) })
+            );
+        });
+    });
 });

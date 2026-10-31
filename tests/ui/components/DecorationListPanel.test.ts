@@ -62,6 +62,26 @@ describe('DecorationListPanel', () => {
     });
 
     describe('rendering with visible layers', () => {
+        test('should display API icons before decoration names using one batched lookup', async () => {
+            const iconUrl = 'https://render.guildwars2.com/icon.png';
+            const apiAdapter = {
+                getHomesteadDecorations: vi.fn().mockResolvedValue([{ id: 327, name: 'Kodan Dining Chair', icon: iconUrl }])
+            };
+            const layers = [createLayer('l1', 'Layer 1', [createDecoration('327', 'Kodan Dining Chair')])];
+            appStore = createMockAppStore(layers);
+
+            new DecorationListPanel(container, appStore, selectionStore, eventBus, undefined, null, apiAdapter);
+
+            await vi.waitFor(() => {
+                expect(container.querySelector('.decoration-list__item-icon')?.getAttribute('src')).toBe(iconUrl);
+            });
+
+            const item = container.querySelector('.decoration-list__item')!;
+            expect(item.querySelector('.decoration-list__item-icon-slot')?.nextElementSibling?.classList.contains('decoration-list__item-name')).toBe(true);
+            expect(apiAdapter.getHomesteadDecorations).toHaveBeenCalledOnce();
+            expect(apiAdapter.getHomesteadDecorations).toHaveBeenCalledWith([327], 'en');
+        });
+
         test('should render decorations from visible layers grouped by layer', () => {
             const layers = [
                 createLayer('l1', 'Layer 1', [
