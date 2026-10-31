@@ -9,7 +9,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "build": "tsc --noEmit && vite build",
-    "build:prod": "tsc --noEmit && vite build --base=/gw2-deco/",
+    "build:prod": "tsc --noEmit && vite build --base=/gw2-deco/ && cp -a dist/. /var/www/gw2-deco/",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.strict.json",
     "test": "vitest run",
