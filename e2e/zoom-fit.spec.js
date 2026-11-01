@@ -55,6 +55,31 @@ async function getMapAndContainerBounds(page) {
     });
 }
 
+async function getTileRowGaps(page) {
+    return page.evaluate(() => {
+        const tiles = Array.from(document.querySelectorAll('image.tile'), image => ({
+            x: Math.round(Number(image.getAttribute('x')) * 1000) / 1000,
+            y: Number(image.getAttribute('y')),
+            height: Number(image.getAttribute('height'))
+        }));
+        const columns = new Map();
+
+        tiles.forEach(tile => {
+            const column = columns.get(tile.x) ?? [];
+            column.push(tile);
+            columns.set(tile.x, column);
+        });
+
+        return Array.from(columns.values()).flatMap(column => {
+            column.sort((first, second) => first.y - second.y);
+            return column.slice(1).map((tile, index) => {
+                const previous = column[index];
+                return tile.y - (previous.y + previous.height);
+            });
+        });
+    });
+}
+
 test.describe('Fit Default Zoom to Map Display Area', () => {
 
     test('map SVG is rendered inside the chart container after layout load', async ({ page }) => {
@@ -70,6 +95,39 @@ test.describe('Fit Default Zoom to Map Display Area', () => {
         // The chart container should have positive dimensions
         expect(bounds.container.width).toBeGreaterThan(0);
         expect(bounds.container.height).toBeGreaterThan(0);
+    });
+
+    test('map tile rows stay aligned at both zoom limits', async ({ page }) => {
+        await loadLayout(page);
+        const firstTile = page.locator('image.tile').first();
+        await expect(firstTile).toBeAttached();
+        const initialTileWidth = Number(await firstTile.getAttribute('width'));
+
+        for (let zoomStep = 0; zoomStep < 25; zoomStep++) {
+            await page.locator('[data-action="ribbon-zoom-in"]').click();
+        }
+
+        const maxZoomTileWidth = Number(await firstTile.getAttribute('width'));
+        expect(maxZoomTileWidth).toBeGreaterThan(initialTileWidth * 10);
+        const maxZoomGaps = await getTileRowGaps(page);
+        expect(maxZoomGaps.length).toBeGreaterThan(0);
+        maxZoomGaps.forEach(gap => {
+            expect(gap).toBeLessThanOrEqual(1e-6);
+            expect(gap).toBeGreaterThanOrEqual(-1.000001);
+        });
+
+        for (let zoomStep = 0; zoomStep < 50; zoomStep++) {
+            await page.locator('[data-action="ribbon-zoom-out"]').click();
+        }
+
+        const minZoomTileWidth = Number(await firstTile.getAttribute('width'));
+        expect(minZoomTileWidth).toBeLessThan(maxZoomTileWidth * 0.1);
+        const minZoomGaps = await getTileRowGaps(page);
+        expect(minZoomGaps.length).toBeGreaterThan(0);
+        minZoomGaps.forEach(gap => {
+            expect(gap).toBeLessThanOrEqual(1e-6);
+            expect(gap).toBeGreaterThanOrEqual(-1.000001);
+        });
     });
 
     test('map boundary decoration circles are within the chart container bounds', async ({ page }) => {

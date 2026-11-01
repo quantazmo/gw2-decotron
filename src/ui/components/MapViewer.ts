@@ -74,6 +74,8 @@ interface MapViewerLayer {
     getAllDecorations?: () => Decoration[];
 }
 
+const TILE_EDGE_OVERDRAW = 0.5;
+
 class MapViewer {
     private svgElement: SVGSVGElement;
     private zoomStore: ZoomStoreLike;
@@ -258,19 +260,21 @@ class MapViewer {
 
         map.tiles.forEach(tile => {
             if (!tile.mapCoords || tile.tileSize === undefined || !tile.url) return;
+            const tileWidth = tile.tileSizeX ?? tile.tileSize;
+            const tileHeight = tile.tileSizeY ?? tile.tileSize;
             // Create SVG image element for tile
             const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
 
             // Convert world coordinates to screen coordinates
             const x1 = xZoom(tile.mapCoords.x);
-            const x2 = xZoom(tile.mapCoords.x + tile.tileSize);
-            const y1 = yZoom(tile.mapCoords.y + tile.tileSize);
+            const x2 = xZoom(tile.mapCoords.x + tileWidth);
+            const y1 = yZoom(tile.mapCoords.y + tileHeight);
             const y2 = yZoom(tile.mapCoords.y);
             image.setAttribute('href', tile.url);
-            image.setAttribute('x', String(Math.floor(x1)));
-            image.setAttribute('y', String(Math.floor(y1)));
-            image.setAttribute('width', String(Math.ceil(x2 - x1)));
-            image.setAttribute('height', String(Math.ceil(y2 - y1)));
+            image.setAttribute('x', String(x1 - TILE_EDGE_OVERDRAW));
+            image.setAttribute('y', String(y1 - TILE_EDGE_OVERDRAW));
+            image.setAttribute('width', String(x2 - x1 + TILE_EDGE_OVERDRAW * 2));
+            image.setAttribute('height', String(y2 - y1 + TILE_EDGE_OVERDRAW * 2));
             image.setAttribute('class', 'tile');
             image.setAttribute('preserveAspectRatio', 'none');
 
@@ -441,15 +445,17 @@ class MapViewer {
         map.tiles.forEach((tile, index) => {
             if (!tile.mapCoords || tile.tileSize === undefined) return;
             if (tileImages[index]) {
+                const tileWidth = tile.tileSizeX ?? tile.tileSize;
+                const tileHeight = tile.tileSizeY ?? tile.tileSize;
                 const x1 = xZoom(tile.mapCoords.x);
-                const x2 = xZoom(tile.mapCoords.x + tile.tileSize);
-                const y1 = yZoom(tile.mapCoords.y + tile.tileSize);
+                const x2 = xZoom(tile.mapCoords.x + tileWidth);
+                const y1 = yZoom(tile.mapCoords.y + tileHeight);
                 const y2 = yZoom(tile.mapCoords.y);
 
-                tileImages[index].setAttribute('x', String(Math.floor(x1)));
-                tileImages[index].setAttribute('y', String(Math.floor(y1)));
-                tileImages[index].setAttribute('width', String(Math.ceil(x2 - x1)));
-                tileImages[index].setAttribute('height', String(Math.ceil(y2 - y1)));
+                tileImages[index].setAttribute('x', String(x1 - TILE_EDGE_OVERDRAW));
+                tileImages[index].setAttribute('y', String(y1 - TILE_EDGE_OVERDRAW));
+                tileImages[index].setAttribute('width', String(x2 - x1 + TILE_EDGE_OVERDRAW * 2));
+                tileImages[index].setAttribute('height', String(y2 - y1 + TILE_EDGE_OVERDRAW * 2));
             }
         });
     }

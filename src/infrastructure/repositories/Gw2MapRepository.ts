@@ -316,9 +316,9 @@ export class Gw2MapRepository extends MapRepository {
                     const tiles: MapTile[] = [];
 
                     const continentTileSize = continentRect.width / Math.pow(2, tileZoom);
-                    const { x: mapTileX1 } = continentToMap([0, 0]);
-                    const { x: mapTileX2 } = continentToMap([continentTileSize, continentTileSize]);
-                    const mapTileSize = mapTileX2 - mapTileX1;
+                    const mapTileOrigin = continentToMap([0, 0]);
+                    const mapTileSizeX = continentToMap([continentTileSize, 0]).x - mapTileOrigin.x;
+                    const mapTileSizeY = Math.abs(continentToMap([0, continentTileSize]).y - mapTileOrigin.y);
 
                     let tileIndex = 0;
                     for (let x = tileRange.min_x; x <= tileRange.max_x; x++) {
@@ -331,7 +331,9 @@ export class Gw2MapRepository extends MapRepository {
                             tiles.push({
                                 mapTile: { x, y },
                                 mapCoords,
-                                tileSize: mapTileSize,
+                                tileSize: mapTileSizeX,
+                                tileSizeX: mapTileSizeX,
+                                tileSizeY: mapTileSizeY,
                                 url: `https://tiles${subdomain}.guildwars2.com/${mapData.continent_id}/${floor}/${tileZoom}/${x}/${y}.jpg`
                             });
                         }

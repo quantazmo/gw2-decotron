@@ -5,8 +5,8 @@
 import { MapBoundary } from './MapBoundary.ts';
 
 export type MapTile =
-    | { mapCoords: { x: number; y: number }; tileSize: number; url: string; mapTile?: { x: number; y: number } }
-    | { x: number; y: number; z?: number; mapCoords?: { x: number; y: number }; tileSize?: number; url?: string; mapTile?: { x: number; y: number } };
+    | { mapCoords: { x: number; y: number }; tileSize: number; tileSizeX?: number; tileSizeY?: number; url: string; mapTile?: { x: number; y: number } }
+    | { x: number; y: number; z?: number; mapCoords?: { x: number; y: number }; tileSize?: number; tileSizeX?: number; tileSizeY?: number; url?: string; mapTile?: { x: number; y: number } };
 
 export class GW2Map {
     id: number;
