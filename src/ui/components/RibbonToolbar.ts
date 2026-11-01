@@ -41,6 +41,7 @@ export class RibbonToolbar {
     private _selectBtn: HTMLButtonElement | null;
     private _reportBtn: HTMLButtonElement | null;
     private _deleteSelectedBtn: HTMLButtonElement | null;
+    private _fitSelectedBtn: HTMLButtonElement | null;
     private _selectionStore: SelectionStore | null;
     private _loadFromUrlDialog: LoadFromUrlDialog | null;
     private _craftMissingDecorationsDialog: CraftMissingDecorationsDialog | null;
@@ -72,6 +73,7 @@ export class RibbonToolbar {
         this._selectBtn = null;
         this._reportBtn = null;
         this._deleteSelectedBtn = null;
+        this._fitSelectedBtn = null;
         this._loadFromUrlDialog = null;
         this._craftMissingDecorationsDialog = null;
 
@@ -112,7 +114,9 @@ export class RibbonToolbar {
         toolbar.appendChild(this._createGroup('View', [
             this._makeBtn('Zoom In', 'ribbon-zoom-in', () => this._onZoomIn()),
             this._makeBtn('Zoom Out', 'ribbon-zoom-out', () => this._onZoomOut()),
-            this._makeBtn('Fit', 'ribbon-fit', () => this._onFit()),
+            this._makeBtn('Fit Entire Map', 'ribbon-fit', () => this._onFit()),
+            this._makeBtn('Fit Selected', 'ribbon-fit-selected', () => this._onFitSelected(),
+                btn => { this._fitSelectedBtn = btn; }),
         ]));
 
         toolbar.appendChild(this._createGroup('Edit', [
@@ -206,6 +210,7 @@ export class RibbonToolbar {
             'ribbon-zoom-in': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
             'ribbon-zoom-out': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
             'ribbon-fit': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
+            'ribbon-fit-selected': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 10 14 10 14 4"/><polyline points="4 14 10 14 10 20"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
             'ribbon-undo': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
             'ribbon-redo': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>`,
             'ribbon-delete-selected': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>`,
@@ -299,6 +304,9 @@ export class RibbonToolbar {
         }
         if (this._deleteSelectedBtn) {
             this._deleteSelectedBtn.disabled = (this._selectionStore?.getSelectedIds().length ?? 0) === 0;
+        }
+        if (this._fitSelectedBtn) {
+            this._fitSelectedBtn.disabled = (this._selectionStore?.getSelectedIds().length ?? 0) === 0;
         }
 
         // Sync tool mode toggle buttons
@@ -413,6 +421,7 @@ export class RibbonToolbar {
     _onZoomIn(): void { this._eventBus?.publish('zoom:in-requested'); }
     _onZoomOut(): void { this._eventBus?.publish('zoom:out-requested'); }
     _onFit(): void { this._eventBus?.publish('zoom:fit-requested'); }
+    _onFitSelected(): void { this._eventBus?.publish('zoom:fit-selected-requested'); }
     _onUndo(): void {
         if (this._undoRedoManager && this._undoRedoManager.canUndo()) {
             if (this._eventBus) {

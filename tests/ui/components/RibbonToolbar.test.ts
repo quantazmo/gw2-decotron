@@ -277,10 +277,23 @@ describe('RibbonToolbar', () => {
         expect(eventBus.publish).toHaveBeenCalledWith('zoom:out-requested');
     });
 
-    test('Fit button publishes zoom:fit-requested (line 241)', () => {
+    test('Fit Entire Map button publishes zoom:fit-requested', () => {
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus);
         toolbar.getElement().querySelector('[data-action="ribbon-fit"]').click();
         expect(eventBus.publish).toHaveBeenCalledWith('zoom:fit-requested');
+    });
+
+    test('Fit Selected is disabled without a selection and publishes its request when selected', () => {
+        const selectionStore = makeSelectionStore();
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
+        const button = toolbar.getElement().querySelector('[data-action="ribbon-fit-selected"]');
+
+        expect(button.getAttribute('aria-label')).toBe('Fit Selected');
+        expect(button.disabled).toBe(true);
+        selectionStore.setSelectedIds(['dec-1']);
+        expect(button.disabled).toBe(false);
+        button.click();
+        expect(eventBus.publish).toHaveBeenCalledWith('zoom:fit-selected-requested');
     });
 
     test('Undo button publishes undo:requested when canUndo is true (lines 243-246)', () => {

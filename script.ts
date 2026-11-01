@@ -1,6 +1,7 @@
 import { scaleLinear, type LinearScale, type ZoomTransform } from './src/ui/scaleFactory.ts';
 import { createZoomHandler } from './src/ui/ZoomHandler.js';
 import { UI_LAYOUT, ZOOM } from './src/config/constants.js';
+import { ZoomCalculationService } from './src/domain/ZoomCalculationService.js';
 import { initializeApplication } from './src/initialization/ApplicationInitializer.js';
 import { zoomStore } from './src/ui/stores/ZoomStore.js';
 import { XmlLayoutAdapter } from './src/infrastructure/XmlLayoutAdapter.js';
@@ -1321,6 +1322,45 @@ document.addEventListener('DOMContentLoaded', function () {
 
         appContext.eventBus.subscribe('zoom:fit-requested', () => {
             if (isMapLoaded()) resetZoom();
+        });
+        appContext.eventBus.subscribe('zoom:fit-selected-requested', () => {
+            if (!globalZoomHandler || !appContext || !xZoomBase || !yZoomBase) return;
+
+            const selectedIds = new Set(appContext.selectionStore.getSelectedIds());
+            if (selectedIds.size === 0) return;
+
+            const layers = appContext.appStore.getState().layers ?? [];
+            const selectedDecorations = layers.flatMap((layer: any) => {
+                const decorations = typeof layer.getAllDecorations === 'function'
+                    ? layer.getAllDecorations()
+                    : layer.decorations instanceof Map
+                        ? Array.from(layer.decorations.values())
+                        : layer.decorations ?? [];
+                return decorations.filter((decoration: any) => selectedIds.has(decoration.uid) && decoration.position);
+            });
+            if (selectedDecorations.length === 0) return;
+
+            const points = selectedDecorations.map((decoration: any) => ({
+                x: xZoomBase!(decoration.position.x),
+                y: yZoomBase!(decoration.position.y)
+            })).filter((point: { x: number; y: number }) => Number.isFinite(point.x) && Number.isFinite(point.y));
+            if (points.length === 0) return;
+
+            const minX = Math.min(...points.map((point: { x: number; y: number }) => point.x));
+            const maxX = Math.max(...points.map((point: { x: number; y: number }) => point.x));
+            const minY = Math.min(...points.map((point: { x: number; y: number }) => point.y));
+            const maxY = Math.max(...points.map((point: { x: number; y: number }) => point.y));
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const width = Math.max(maxX - minX, 40);
+            const height = Math.max(maxY - minY, 40);
+            const fit = ZoomCalculationService.calculateZoomToFitArea({
+                min: { x: centerX - width / 2, y: centerY - height / 2 },
+                width,
+                height
+            }, getChartContainerDimensions());
+
+            globalZoomHandler.setTransform({ k: fit.zoom, x: fit.pan.x, y: fit.pan.y });
         });
         appContext.eventBus.subscribe('zoom:in-requested', () => {
             if (!globalZoomHandler) return;
