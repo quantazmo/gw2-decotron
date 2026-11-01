@@ -2034,6 +2034,8 @@ button:active {
   border-radius: 8px;
   padding: 0;
   max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
   width: 90vw;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   font-family: inherit;
@@ -2042,6 +2044,14 @@ button:active {
 
 .decoration-info-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
+}
+
+.decoration-info-dialog__icon {
+  display: block;
+  width: 128px;
+  height: 128px;
+  margin: 20px auto 0;
+  object-fit: contain;
 }
 
 .decoration-info-dialog__title {
@@ -2057,6 +2067,19 @@ button:active {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 6px 16px;
+}
+
+.decoration-info-dialog__body select,
+.decoration-info-dialog__body input[type="number"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--btn-sec-border);
+  border-radius: 4px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
 }
 
 .decoration-info-dialog__row {
@@ -2082,28 +2105,39 @@ button:active {
 .decoration-info-dialog__actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   padding: 12px 24px 20px;
 }
 
-.decoration-info-dialog__ok {
+.decoration-info-dialog__save,
+.decoration-info-dialog__cancel {
   padding: 8px 20px;
-  border: 1px solid var(--btn-sec-border);
   border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+}
+
+.decoration-info-dialog__save {
+  border: 1px solid #007bff;
   background: #007bff;
   color: #fff;
-  border-color: #007bff;
   transition: background-color 0.15s, border-color 0.15s;
 }
 
-.decoration-info-dialog__ok:hover {
+.decoration-info-dialog__save:hover {
   background: #0056b3;
   border-color: #0056b3;
 }
 
-.decoration-info-dialog__ok:focus-visible {
+.decoration-info-dialog__cancel {
+  border: 1px solid var(--btn-sec-border);
+  background: var(--surface-bg);
+  color: var(--text-primary);
+}
+
+.decoration-info-dialog__save:focus-visible,
+.decoration-info-dialog__cancel:focus-visible {
   outline: 2px solid #4a90d9;
   outline-offset: 2px;
 }

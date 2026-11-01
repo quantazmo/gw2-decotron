@@ -190,7 +190,7 @@ class HomesteadLayout {
     /**
      * Update decoration in a layer (aggregate method)
      */
-    updateDecorationInLayer(layerId: string, decorationId: string, updates: { position?: WorldCoordinate | { x: number; y: number; z?: number; rotation?: number }; rotation?: number; scale?: number }): Decoration {
+    updateDecorationInLayer(layerId: string, decorationId: string, updates: { position?: WorldCoordinate | { x: number; y: number; z?: number; rotation?: number }; rotation?: number; rotX?: number; rotZ?: number; scale?: number }): Decoration {
         const layer = this.getLayer(layerId);
         if (!layer) {
             throw new Error(`HomesteadLayout.updateDecorationInLayer: layer with id "${layerId}" not found`);
@@ -210,13 +210,19 @@ class HomesteadLayout {
                 decoration.position = new WorldCoordinate(
                     updates.position.x,
                     updates.position.y,
-                    updates.position.z || decoration.position.z,
-                    updates.position.rotation || decoration.position.rotation
+                    updates.position.z ?? decoration.position.z,
+                    updates.position.rotation ?? decoration.position.rotation
                 );
             }
         }
         if (updates.rotation !== undefined) {
             decoration.rotation = updates.rotation;
+        }
+        if (updates.rotX !== undefined) {
+            decoration.rotX = updates.rotX;
+        }
+        if (updates.rotZ !== undefined) {
+            decoration.rotZ = updates.rotZ;
         }
         if (updates.scale !== undefined) {
             decoration.scale = updates.scale;

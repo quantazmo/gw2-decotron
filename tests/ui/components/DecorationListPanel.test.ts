@@ -407,6 +407,98 @@ describe('DecorationListPanel', () => {
         });
     });
 
+    describe('decoration info layer changes', () => {
+        test('should execute the undoable move command when a new layer is saved', async () => {
+            const decoration = createDecoration('d1', 'Oak Tree');
+            const layers = [
+                createLayer('l1', 'Layer One', [decoration]),
+                createLayer('l2', 'Layer Two')
+            ];
+            appStore = createMockAppStore(layers);
+            const appService = { execute: vi.fn().mockResolvedValue(undefined) } as unknown as AppService;
+            new DecorationListPanel(container, appStore, selectionStore, eventBus, appService);
+
+            container.querySelector('.decoration-list__item')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            const layerSelect = document.querySelector('.decoration-info-dialog__layer-select') as HTMLSelectElement;
+            layerSelect.value = 'l2';
+            (document.querySelector('.decoration-info-dialog__save') as HTMLButtonElement).click();
+
+            await vi.waitFor(() => {
+                expect(appService.execute).toHaveBeenCalledWith({
+                    type: 'MoveDecorationsCommand',
+                    payload: { decorationIds: ['d1'], targetLayerId: 'l2' }
+                });
+                expect(appService.execute).toHaveBeenCalledWith({
+                    type: 'UpdateDecorationCommand',
+                    payload: {
+                        layerId: 'l2',
+                        decorationId: 'd1',
+                        position: { x: 0, y: 0, z: 0 },
+                        rotation: 0,
+                        rotX: 0,
+                        rotZ: 0,
+                        scale: 1
+                    }
+                });
+            });
+        });
+
+        test('should create an undoable layer and move the decoration when New Layer is saved', async () => {
+            const layers = [
+                createLayer('l1', 'Layer One', [createDecoration('d1', 'Oak Tree')])
+            ];
+            appStore = createMockAppStore(layers);
+            const appService = {
+                execute: vi.fn(async command => command.type === 'CreateLayerCommand' ? { id: 'l2' } : undefined)
+            } as unknown as AppService;
+            new DecorationListPanel(container, appStore, selectionStore, eventBus, appService);
+
+            container.querySelector('.decoration-list__item')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            const layerSelect = document.querySelector('.decoration-info-dialog__layer-select') as HTMLSelectElement;
+            layerSelect.value = '__create_new_layer__';
+            (document.querySelector('.decoration-info-dialog__save') as HTMLButtonElement).click();
+
+            await vi.waitFor(() => {
+                expect(appService.execute).toHaveBeenNthCalledWith(1, {
+                    type: 'CreateLayerCommand',
+                    payload: { isVisible: true }
+                });
+                expect(appService.execute).toHaveBeenNthCalledWith(2, {
+                    type: 'MoveDecorationsCommand',
+                    payload: { decorationIds: ['d1'], targetLayerId: 'l2' }
+                });
+                expect(appService.execute).toHaveBeenNthCalledWith(3, {
+                    type: 'UpdateDecorationCommand',
+                    payload: {
+                        layerId: 'l2',
+                        decorationId: 'd1',
+                        position: { x: 0, y: 0, z: 0 },
+                        rotation: 0,
+                        rotX: 0,
+                        rotZ: 0,
+                        scale: 1
+                    }
+                });
+            });
+        });
+
+        test('should not execute a move command when the dialog is cancelled', async () => {
+            const layers = [
+                createLayer('l1', 'Layer One', [createDecoration('d1', 'Oak Tree')]),
+                createLayer('l2', 'Layer Two')
+            ];
+            appStore = createMockAppStore(layers);
+            const appService = { execute: vi.fn() } as unknown as AppService;
+            new DecorationListPanel(container, appStore, selectionStore, eventBus, appService);
+
+            container.querySelector('.decoration-list__item')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            (document.querySelector('.decoration-info-dialog__cancel') as HTMLButtonElement).click();
+            await Promise.resolve();
+
+            expect(appService.execute).not.toHaveBeenCalled();
+        });
+    });
+
     describe('layer header context menu', () => {
         let contextMenu: ContextMenu;
         let shownItems: Parameters<ContextMenu['show']>[2];

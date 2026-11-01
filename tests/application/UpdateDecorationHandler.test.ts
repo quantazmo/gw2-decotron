@@ -7,6 +7,7 @@ import { UpdateDecorationCommand } from '../../src/application/commands/UpdateDe
 import { HomesteadLayout } from '../../src/domain/HomesteadLayout.js';
 import { Decoration } from '../../src/domain/Decoration.js';
 import { Layer } from '../../src/domain/Layer.js';
+import { UndoRedoManager } from '../../src/application/UndoRedoManager.js';
 
 describe('UpdateDecorationHandler', () => {
     let layout;
@@ -36,6 +37,60 @@ describe('UpdateDecorationHandler', () => {
 
         expect(result.decoration.position.x).toBe(300);
         expect(result.decoration.position.y).toBe(400);
+    });
+
+    test('should update all decoration transform fields', () => {
+        const command = {
+            layerId: layer.id,
+            decorationId: decoration.uid,
+            position: { x: 300, y: 400, z: 0 },
+            rotation: 1.2,
+            rotX: 0.3,
+            rotZ: 0.6,
+            scale: 2.5
+        };
+
+        const result = handler.execute(command);
+
+        expect(result.decoration.position.toObject()).toMatchObject({ x: 300, y: 400, z: 0 });
+        expect(result.decoration.rotation).toBe(1.2);
+        expect(result.decoration.rotX).toBe(0.3);
+        expect(result.decoration.rotZ).toBe(0.6);
+        expect(result.decoration.scale).toBe(2.5);
+    });
+
+    test('should record complete before and after transforms for undo and redo', () => {
+        decoration.rotX = 0.15;
+        decoration.rotZ = 0.45;
+        const undoRedoManager = new UndoRedoManager();
+        const undoableHandler = new UpdateDecorationHandler(layout, undoRedoManager);
+
+        undoableHandler.execute({
+            layerId: layer.id,
+            decorationId: decoration.uid,
+            position: { x: 300, y: 400, z: 0 },
+            rotation: 1.2,
+            rotX: 0.3,
+            rotZ: 0.6,
+            scale: 2.5
+        });
+
+        const record = undoRedoManager.peekUndo()!;
+        expect(record.commandType).toBe('UpdateDecorationCommand');
+        expect(record.reverseData).toMatchObject({
+            position: { x: 100, y: 200, z: 0, rotation: 0 },
+            rotation: 0,
+            rotX: 0.15,
+            rotZ: 0.45,
+            scale: 1
+        });
+        expect(record.forwardData).toMatchObject({
+            position: { x: 300, y: 400, z: 0 },
+            rotation: 1.2,
+            rotX: 0.3,
+            rotZ: 0.6,
+            scale: 2.5
+        });
     });
 
     test('should emit DecorationUpdatedEvent', () => {

@@ -394,7 +394,10 @@ class DecorationListPanel {
         void loadIcons.then(results => {
             if (catalog !== this._iconCatalog) return;
             for (const decoration of results ?? []) {
-                if (decoration.icon) this._decorationIcons.set(decoration.id, decoration.icon);
+                if (decoration.icon) {
+                    this._decorationIcons.set(decoration.id, decoration.icon);
+                    this._decorationInfoDialog.updateIcon(decoration.id, decoration.icon);
+                }
             }
             this.render(this.appStore.getState());
         }).catch(() => {
@@ -702,14 +705,41 @@ class DecorationListPanel {
 
     /**
      * Open the decoration info dialog for a decoration.
-     * Resolves the layer name from the current store state.
+    * Supplies the current layer list and dispatches a move command after Save.
      */
     private _decorationDoubleClick(decoration: Decoration, layerId: string): void {
         const state = this.appStore.getState();
         const layers = state.layers || [];
-        const layer = layers.find(l => l.id === layerId);
-        const layerName = layer ? (layer.name || `Layer ${layer.id}`) : undefined;
-        this._decorationInfoDialog.show({ decoration, layerName });
+        const iconUrl = this._decorationIcons.get(Number(decoration.id));
+        void this._decorationInfoDialog.show({
+            decoration,
+            layers: layers.map(layer => ({ id: layer.id, name: layer.name || `Layer ${layer.id}` })),
+            selectedLayerId: layerId,
+            iconUrl
+        }).then(async result => {
+            if (!result || !this.appService) return;
+            let targetLayerId: string | undefined;
+            if (result.layerSelection.kind === 'new') {
+                const createdLayer = await this.appService.execute({
+                    type: 'CreateLayerCommand',
+                    payload: { isVisible: true }
+                }) as { id?: string } | undefined;
+                targetLayerId = createdLayer?.id;
+            } else {
+                targetLayerId = result.layerSelection.layerId;
+            }
+            if (!targetLayerId) return;
+            if (targetLayerId !== layerId) {
+                await this.appService.execute({
+                    type: 'MoveDecorationsCommand',
+                    payload: { decorationIds: [decoration.uid], targetLayerId }
+                });
+            }
+            return this.appService.execute({
+                type: 'UpdateDecorationCommand',
+                payload: { layerId: targetLayerId, decorationId: decoration.uid, ...result.updates }
+            });
+        });
     }
 }
 
