@@ -110,6 +110,10 @@ test.describe('URL parameter: ?layout=<url>', () => {
 
         // A layer should appear without any user interaction
         await expect(page.locator('#layers-list .layer-item').first()).toBeVisible({ timeout: 15_000 });
+
+        // Map zoom setup must not overwrite the duplicator icon's own transform.
+        await expect(page.locator('[data-action="ribbon-decoration-duplicator"] svg > g'))
+            .toHaveAttribute('transform', 'rotate(180 12 12)');
     });
 
     test('does not error when ?layout= param is absent', async ({ page }) => {

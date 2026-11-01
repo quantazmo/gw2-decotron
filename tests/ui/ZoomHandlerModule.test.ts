@@ -88,7 +88,7 @@ describe('createZoomHandler', () => {
         it('rescaleX calls copy().domain() on a scale function', () => {
             let copyCalled = false;
             const domainResult = { domain: () => domainResult };
-            const mockScale = function() {};
+            const mockScale = function () { };
             mockScale.domain = () => [0, 100];
             mockScale.range = () => [0, 800];
             mockScale.copy = () => { copyCalled = true; return domainResult; };
@@ -99,7 +99,7 @@ describe('createZoomHandler', () => {
         it('rescaleY calls copy().domain() on a scale function', () => {
             let copyCalled = false;
             const domainResult = { domain: () => domainResult };
-            const mockScale = function() {};
+            const mockScale = function () { };
             mockScale.domain = () => [0, 100];
             mockScale.range = () => [0, 600];
             mockScale.copy = () => { copyCalled = true; return domainResult; };
@@ -214,6 +214,22 @@ describe('createZoomHandler', () => {
     });
 
     describe('wheel zoom', () => {
+        it('blocks user zoom and pan while interactions are disabled but allows programmatic transforms', () => {
+            handler.setTransform({ k: 2, x: 10, y: 20 });
+            handler.setInteractionsEnabled(false);
+
+            svgEl.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: 400, clientY: 300, bubbles: true, cancelable: true }));
+            svgEl.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 100, clientY: 100 }));
+            document.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 150, clientY: 130 }));
+            expect(handler.getTransform()).toEqual({ k: 2, x: 10, y: 20 });
+
+            handler.setTransform({ k: 3, x: 15, y: 25 });
+            expect(handler.getTransform()).toEqual({ k: 3, x: 15, y: 25 });
+
+            handler.setInteractionsEnabled(true);
+            expect(svgEl.style.cursor).toBe('grab');
+        });
+
         it('zooms in on negative deltaY', () => {
             const wheelEvt = new WheelEvent('wheel', { deltaY: -100, clientX: 400, clientY: 300, bubbles: true, cancelable: true });
             svgEl.dispatchEvent(wheelEvt);
@@ -308,7 +324,7 @@ describe('createZoomHandler', () => {
             let rafCallback = null;
             const origRaf = global.requestAnimationFrame;
             global.requestAnimationFrame = (cb) => { rafCallback = cb; return 1; };
-            global.cancelAnimationFrame = () => {};
+            global.cancelAnimationFrame = () => { };
 
             svgEl.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 100, clientY: 100 }));
             document.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 130 }));

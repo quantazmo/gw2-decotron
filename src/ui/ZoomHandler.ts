@@ -20,6 +20,7 @@ type ZoomHandlerApi = {
     getTransform(): PanZoomTransform;
     reset(): void;
     setTransform(transform: Partial<PanZoomTransform> & Pick<PanZoomTransform, 'k'>): void;
+    setInteractionsEnabled(enabled: boolean): void;
     destroy(): void;
     transform: ZoomCallbackTransform;
 };
@@ -55,6 +56,8 @@ export function createZoomHandler(svgElement: SVGElement, zoomStore: ZoomStore, 
 
     // Pan state
     let isPanning = false;
+    let interactionsEnabled = true;
+    let cursorBeforeLock = '';
     let panStartX = 0;
     let panStartY = 0;
     let panStartTransformX = 0;
@@ -176,6 +179,7 @@ export function createZoomHandler(svgElement: SVGElement, zoomStore: ZoomStore, 
      */
     function handleWheel(e: WheelEvent): void {
         e.preventDefault();
+        if (!interactionsEnabled) return;
 
         // Calculate zoom delta from wheel event
         const zoomFactor = ZOOM.WHEEL_FACTOR;
@@ -224,6 +228,7 @@ export function createZoomHandler(svgElement: SVGElement, zoomStore: ZoomStore, 
      * @param {MouseEvent} e - The mouse event
      */
     function handleMouseDown(e: MouseEvent): void {
+        if (!interactionsEnabled) return;
         // Only respond to left (0) and middle (1) mouse buttons
         if (e.button !== 0 && e.button !== 1) {
             return;
@@ -244,7 +249,7 @@ export function createZoomHandler(svgElement: SVGElement, zoomStore: ZoomStore, 
      * @param {MouseEvent} e - The mouse event
      */
     function handleMouseMove(e: MouseEvent): void {
-        if (!isPanning) return;
+        if (!interactionsEnabled || !isPanning) return;
 
         const deltaX = e.clientX - panStartX;
         const deltaY = e.clientY - panStartY;
@@ -329,6 +334,21 @@ export function createZoomHandler(svgElement: SVGElement, zoomStore: ZoomStore, 
                 y: 0
             };
             notifyZoomChange();
+        },
+
+        setInteractionsEnabled(enabled: boolean): void {
+            if (!enabled) cursorBeforeLock = svgElement.style.cursor;
+            interactionsEnabled = enabled;
+            if (!enabled && isPanning) {
+                isPanning = false;
+                if (pendingAnimationFrame !== null) {
+                    cancelAnimationFrame(pendingAnimationFrame);
+                    pendingAnimationFrame = null;
+                    pendingUpdate = false;
+                }
+            }
+            svgElement.style.cursor = enabled ? cursorBeforeLock : 'not-allowed';
+            if (enabled) cursorBeforeLock = '';
         },
 
         /**

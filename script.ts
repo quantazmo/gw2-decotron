@@ -395,13 +395,17 @@ let globalZoomHandler: {
     reset: () => void;
     getTransform: () => ZoomTransform;
     setTransform: (transform: ZoomTransform) => void;
+    setInteractionsEnabled: (enabled: boolean) => void;
 } | null = null;
+let moveSelectedActive = false;
+let moveSelectedPreviousTransform: ZoomTransform | null = null;
 
 /**
  * Reset zoom and pan using the refactored zoom handler
  */
 function resetZoomRefactored() {
     try {
+        if (moveSelectedActive) return;
         // Reset the zoom handler (it manages the actual zoom/pan)
         if (globalZoomHandler) {
             globalZoomHandler.reset();
@@ -434,7 +438,7 @@ function resetZoomRefactored() {
  * Recalculates scale domains and updates all rendered elements.
  */
 function resetZoom() {
-    if (!isMapLoaded()) return;
+    if (moveSelectedActive || !isMapLoaded()) return;
 
     // Find min/max coordinates from boundary polygon points
     const currentMap = getMap();
@@ -508,7 +512,7 @@ function resetZoom() {
     window.yZoom = yZoom;
 
     // Reset SVG transform to identity
-    const svgGroup = document.querySelector('svg g');
+    const svgGroup = document.querySelector('#map-container svg g');
     const margin_top = UI_LAYOUT.MARGIN_TOP;
     const margin_left = UI_LAYOUT.MARGIN_LEFT;
     if (svgGroup) {
@@ -1137,6 +1141,7 @@ function initializeMapElements() {
         if (appContext.appService) {
             mapViewer.setAppService(appContext.appService);
         }
+        mapViewer.setEventBus(appContext.eventBus);
         if (appContext.contextMenu) {
             mapViewer.setContextMenu(appContext.contextMenu);
         }
@@ -1321,10 +1326,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!appContext) return;
 
         appContext.eventBus.subscribe('zoom:fit-requested', () => {
-            if (isMapLoaded()) resetZoom();
+            if (!moveSelectedActive && isMapLoaded()) resetZoom();
         });
         appContext.eventBus.subscribe('zoom:fit-selected-requested', () => {
-            if (!globalZoomHandler || !appContext || !xZoomBase || !yZoomBase) return;
+            if (!globalZoomHandler || !appContext || !xZoomBase || !yZoomBase || moveSelectedActive) return;
 
             const selectedIds = new Set(appContext.selectionStore.getSelectedIds());
             if (selectedIds.size === 0) return;
@@ -1362,8 +1367,41 @@ document.addEventListener('DOMContentLoaded', function () {
 
             globalZoomHandler.setTransform({ k: fit.zoom, x: fit.pan.x, y: fit.pan.y });
         });
+        appContext.eventBus.subscribe('move:selected-start-requested', () => {
+            if (!globalZoomHandler || !appContext || moveSelectedActive) return;
+            moveSelectedPreviousTransform = globalZoomHandler.getTransform();
+            appContext.eventBus.publish('zoom:fit-selected-requested');
+            moveSelectedActive = true;
+            globalZoomHandler.setInteractionsEnabled(true);
+            const position = mapViewer?.beginMoveSelected();
+            if (position) appContext.eventBus.publish('move:selected-position-changed', position);
+        });
+        appContext.eventBus.subscribe<{ x: number; y: number; z: number }>('move:selected-position-requested', position => {
+            mapViewer?.setMoveSelectedPosition(position);
+        });
+        appContext.eventBus.subscribe<boolean>('move:selected-copy-changed', enabled => {
+            mapViewer?.setMoveSelectedCopyEnabled(enabled);
+        });
+        appContext.eventBus.subscribe<string>('move:selected-copy-target-changed', layerId => {
+            mapViewer?.setMoveSelectedCopyTargetLayer(layerId);
+        });
+        appContext.eventBus.subscribe('move:selected-save-requested', async () => {
+            if (!moveSelectedActive) return;
+            moveSelectedActive = false;
+            globalZoomHandler?.setInteractionsEnabled(true);
+            await mapViewer?.commitMoveSelected();
+            moveSelectedPreviousTransform = null;
+        });
+        appContext.eventBus.subscribe('move:selected-cancel-requested', () => {
+            if (!moveSelectedActive) return;
+            moveSelectedActive = false;
+            mapViewer?.cancelMoveSelected();
+            globalZoomHandler?.setInteractionsEnabled(true);
+            if (moveSelectedPreviousTransform) globalZoomHandler?.setTransform(moveSelectedPreviousTransform);
+            moveSelectedPreviousTransform = null;
+        });
         appContext.eventBus.subscribe('zoom:in-requested', () => {
-            if (!globalZoomHandler) return;
+            if (!globalZoomHandler || moveSelectedActive) return;
             const t = globalZoomHandler.getTransform();
             const svgEl = document.getElementById('map-container')?.querySelector('svg');
             if (!svgEl) return;
@@ -1379,7 +1417,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         appContext.eventBus.subscribe('zoom:out-requested', () => {
-            if (!globalZoomHandler) return;
+            if (!globalZoomHandler || moveSelectedActive) return;
             const t = globalZoomHandler.getTransform();
             const svgEl = document.getElementById('map-container')?.querySelector('svg');
             if (!svgEl) return;
@@ -1400,7 +1438,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // T118: Re-fit map on window resize using container dimensions
     window.addEventListener('resize', () => {
-        if (isMapLoaded()) {
+        if (!moveSelectedActive && isMapLoaded()) {
             resetZoom();
         }
     });
@@ -1409,7 +1447,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const chartContainerForObserver = document.getElementById('map-container');
     if (chartContainerForObserver && typeof ResizeObserver !== 'undefined') {
         const containerResizeObserver = new ResizeObserver(() => {
-            if (isMapLoaded()) {
+            if (!moveSelectedActive && isMapLoaded()) {
                 resetZoom();
             }
         });

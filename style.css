@@ -506,6 +506,125 @@ svg {
   box-sizing: border-box;
 }
 
+.create-panel-content {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.create-panel-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.move-position-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.move-position-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.move-position-input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+  box-sizing: border-box;
+}
+
+.move-as-copy-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.move-as-copy-input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #247a45;
+}
+
+.move-copy-target-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.move-copy-target-control[hidden] {
+  display: none;
+}
+
+.move-copy-target-select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+
+.create-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.create-panel-actions button {
+  min-width: 72px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.create-panel-actions .create-panel-save {
+  border-color: #247a45;
+  background: #247a45;
+  color: #fff;
+}
+
+.moving-selected-decorations {
+  cursor: move !important;
+}
+
+.move-copy-preview {
+  opacity: 0.55 !important;
+  stroke-dasharray: 3 2;
+}
+
 /* Tab group */
 
 .tab-group-wrapper {

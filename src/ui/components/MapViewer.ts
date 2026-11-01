@@ -29,6 +29,16 @@ interface ZoomStoreLike {
     onChange?: (listener: (data: unknown) => void) => unknown;
 }
 
+interface LinearScaleLike {
+    (value: number): number;
+    domain: () => number[];
+    range: () => number[];
+}
+
+type MovePosition = { x: number; y: number; z: number };
+type MoveRecord = { layerId: string; decoration: Decoration; position: MovePosition; rotation: number };
+type MoveEventBusLike = { publish(eventType: string, data: unknown): void };
+
 interface AppStoreLike {
     subscribe?: (listener: (state: MapViewerState) => void) => unknown;
     getState: () => MapViewerState;
@@ -48,6 +58,7 @@ interface SelectionStoreLike {
 
 interface ToolModeStoreLike {
     getMode: () => string;
+    setMode?: (mode: 'pan') => void;
     subscribe: (listener: (mode: string) => void) => unknown;
 }
 
@@ -76,6 +87,7 @@ interface MapViewerLayer {
 }
 
 const TILE_EDGE_OVERDRAW = 0.5;
+const NEW_LAYER_TARGET_ID = '__new__';
 
 class MapViewer {
     private svgElement: SVGSVGElement;
@@ -102,6 +114,19 @@ class MapViewer {
     private _indicatorMouseY = 0;
     private _indicatorCtrl = false;
     private _indicatorShift = false;
+    private _moveSelectedIds: Set<string> | null = null;
+    private _movePreviewOffset = { x: 0, y: 0 };
+    private _movePanStartCenter: { x: number; y: number } | null = null;
+    private _moveCameraOffset = { x: 0, y: 0 };
+    private _moveManualOffset = { x: 0, y: 0, z: 0 };
+    private _moveOriginals = new Map<string, MoveRecord>();
+    private _moveStartPosition: MovePosition | null = null;
+    private _moveCurrentPosition: MovePosition | null = null;
+    private _moveAsCopy = false;
+    private _moveCopyPreviewGroup!: SVGGElement;
+    private _moveCopyCircles = new Map<string, SVGCircleElement>();
+    private _moveCopyTargetLayerId: string | null = null;
+    private _eventBus: MoveEventBusLike | null = null;
 
     constructor(svgElement: SVGSVGElement, zoomStore: ZoomStoreLike, appStore: AppStoreLike, selectionStore: SelectionStoreLike | null) {
         this.svgElement = svgElement;
@@ -161,12 +186,14 @@ class MapViewer {
         this.boundaryGroup = renderHelpers.createGroup({ className: 'boundary' });
         this.layersGroup = renderHelpers.createGroup({ className: 'layers' });
         this.decorationsGroup = renderHelpers.createGroup({ className: 'decorations' });
+        this._moveCopyPreviewGroup = renderHelpers.createGroup({ className: 'move-copy-previews' });
 
         // Append to the container group instead of directly to SVG
         containerGroup.appendChild(this.tileGroup);
         containerGroup.appendChild(this.boundaryGroup);
         containerGroup.appendChild(this.layersGroup);
         containerGroup.appendChild(this.decorationsGroup);
+        containerGroup.appendChild(this._moveCopyPreviewGroup);
 
         // Bind click handlers for decoration selection
         this._bindSelectionHandlers();
@@ -205,6 +232,7 @@ class MapViewer {
      * @param {Object} transform - Transform with sx, sy, tx, ty
      */
     updateTransform(_transform: unknown): void {
+        this._refreshMoveOffsetFromPanCenter();
         // Update positions of existing elements instead of recreating them
         // The xZoom/yZoom functions are updated globally before this is called
         if (this.currentMap) {
@@ -239,6 +267,8 @@ class MapViewer {
         }
 
         this.renderLayers(state.layers);
+        this.updateDecorationPositions(this.currentLayers);
+        this._renderMoveCopyPreview();
     }
 
     /**
@@ -519,8 +549,9 @@ class MapViewer {
                     // Use cached circle reference instead of querySelector
                     const circle = this.decorationCircles.get(decoration.uid);
                     if (circle) {
-                        const screenX = xZoom(decoration.position.x);
-                        const screenY = yZoom(decoration.position.y);
+                        const isMoving = !this._moveAsCopy && (this._moveSelectedIds?.has(decoration.uid) ?? false);
+                        const screenX = xZoom(decoration.position.x) + (isMoving ? this._movePreviewOffset.x : 0);
+                        const screenY = yZoom(decoration.position.y) + (isMoving ? this._movePreviewOffset.y : 0);
                         circle.setAttribute('cx', String(screenX));
                         circle.setAttribute('cy', String(screenY));
                     }
@@ -537,6 +568,8 @@ class MapViewer {
         domHelpers.empty(this.boundaryGroup);
         domHelpers.empty(this.layersGroup);
         domHelpers.empty(this.decorationsGroup);
+        domHelpers.empty(this._moveCopyPreviewGroup);
+        this._moveCopyCircles.clear();
 
         // Clear caches
         this.currentMap = null;
@@ -603,6 +636,7 @@ class MapViewer {
         this.svgElement.addEventListener('click', (e) => {
             const selectionStore = this.selectionStore;
             if (!selectionStore) return;
+            if (this._moveSelectedIds) return;
 
             // In 'select' mode, empty-area clicks are handled by the rectangle
             // pointer handler (the click fires after a zero-distance drag, so we
@@ -944,6 +978,255 @@ class MapViewer {
      */
     setAppService(appService: AppServiceLike): void {
         this.appService = appService;
+    }
+
+    setEventBus(eventBus: MoveEventBusLike): void {
+        this._eventBus = eventBus;
+    }
+
+    beginMoveSelected(): MovePosition | null {
+        this._toolModeStore?.setMode?.('pan');
+        const selectedIds = new Set(this.selectionStore?.getSelectedIds() ?? []);
+        this._moveOriginals.clear();
+        for (const layer of this.currentLayers) {
+            for (const decoration of this._getLayerDecorations(layer)) {
+                if (!selectedIds.has(decoration.uid) || !decoration.position) continue;
+                this._moveOriginals.set(decoration.uid, {
+                    layerId: layer.id,
+                    decoration,
+                    position: {
+                        x: decoration.position.x,
+                        y: decoration.position.y,
+                        z: decoration.position.z ?? 0
+                    },
+                    rotation: decoration.position.rotation ?? 0
+                });
+            }
+        }
+        this._moveSelectedIds = new Set(this._moveOriginals.keys());
+        if (this._moveOriginals.size === 0) return null;
+
+        const records = Array.from(this._moveOriginals.values());
+        this._moveStartPosition = {
+            x: records.reduce((sum, item) => sum + item.position.x, 0) / records.length,
+            y: records.reduce((sum, item) => sum + item.position.y, 0) / records.length,
+            z: records.reduce((sum, item) => sum + item.position.z, 0) / records.length
+        };
+        this._movePanStartCenter = this._getMapPanCenter();
+        this._moveCameraOffset = { x: 0, y: 0 };
+        this._moveManualOffset = { x: 0, y: 0, z: 0 };
+        this._moveCurrentPosition = { x: 0, y: 0, z: 0 };
+        this._moveAsCopy = false;
+        this._movePreviewOffset = { x: 0, y: 0 };
+        this.svgElement.classList.add('moving-selected-decorations');
+        this._eventBus?.publish('move:selected-position-changed', { ...this._moveCurrentPosition });
+        return { ...this._moveCurrentPosition };
+    }
+
+    async commitMoveSelected(): Promise<void> {
+        const originals = Array.from(this._moveOriginals.values());
+        const start = this._moveStartPosition;
+        const target = this._moveCurrentPosition;
+        if (originals.length === 0 || !start || !target || !this.appService) {
+            this.cancelMoveSelected();
+            return;
+        }
+
+        const deltaX = target.x;
+        const deltaY = target.y;
+        const deltaZ = target.z;
+
+        if (this._moveAsCopy) {
+            let targetLayerId = this._moveCopyTargetLayerId;
+            if (!targetLayerId || targetLayerId === NEW_LAYER_TARGET_ID) {
+                const createdLayer = await this.appService.execute({
+                    type: 'CreateLayerCommand',
+                    payload: { isVisible: true }
+                }) as { id?: string } | undefined;
+                targetLayerId = createdLayer?.id ?? null;
+            }
+            if (!targetLayerId) {
+                this.cancelMoveSelected();
+                return;
+            }
+
+            const result = await this.appService.execute({
+                type: 'CopyDecorationsCommand',
+                payload: { decorationIds: originals.map(item => item.decoration.uid), targetLayerId }
+            }) as { decorationIds?: string[] } | undefined;
+            const copiedIds = result?.decorationIds ?? [];
+            for (let index = 0; index < Math.min(originals.length, copiedIds.length); index++) {
+                const record = originals[index];
+                await this.appService.execute({
+                    type: 'UpdateDecorationCommand',
+                    payload: {
+                        layerId: targetLayerId,
+                        decorationId: copiedIds[index],
+                        position: {
+                            x: record.position.x + deltaX,
+                            y: record.position.y + deltaY,
+                            z: record.position.z + deltaZ,
+                            rotation: record.rotation
+                        }
+                    }
+                });
+            }
+            if (copiedIds.length > 0) this.selectionStore?.selectAll(copiedIds);
+        } else {
+            await Promise.all(originals.map(record => this.appService!.execute({
+                type: 'UpdateDecorationCommand',
+                payload: {
+                    layerId: record.layerId,
+                    decorationId: record.decoration.uid,
+                    position: {
+                        x: record.position.x + deltaX,
+                        y: record.position.y + deltaY,
+                        z: record.position.z + deltaZ,
+                        rotation: record.rotation
+                    }
+                }
+            })));
+        }
+
+        this.cancelMoveSelected();
+    }
+
+    cancelMoveSelected(): void {
+        this._moveSelectedIds = null;
+        this._moveOriginals.clear();
+        this._moveStartPosition = null;
+        this._moveCurrentPosition = null;
+        this._movePanStartCenter = null;
+        this._moveCameraOffset = { x: 0, y: 0 };
+        this._moveManualOffset = { x: 0, y: 0, z: 0 };
+        this._moveAsCopy = false;
+        this._moveCopyTargetLayerId = null;
+        this._movePreviewOffset = { x: 0, y: 0 };
+        this.svgElement.classList.remove('moving-selected-decorations');
+        domHelpers.empty(this._moveCopyPreviewGroup);
+        this._moveCopyCircles.clear();
+        this.updateDecorationPositions(this.currentLayers);
+    }
+
+    setMoveSelectedPosition(position: MovePosition): void {
+        if (!this._moveStartPosition || ![position.x, position.y, position.z].every(Number.isFinite)) return;
+        this._moveManualOffset = {
+            x: position.x - this._moveCameraOffset.x,
+            y: position.y - this._moveCameraOffset.y,
+            z: position.z
+        };
+        this._moveCurrentPosition = { ...position };
+        const xZoom = window.xZoom as LinearScaleLike | undefined;
+        const yZoom = window.yZoom as LinearScaleLike | undefined;
+        if (xZoom && yZoom) {
+            this._movePreviewOffset = {
+                x: xZoom(this._moveStartPosition.x + position.x) - xZoom(this._moveStartPosition.x),
+                y: yZoom(this._moveStartPosition.y + position.y) - yZoom(this._moveStartPosition.y)
+            };
+        }
+        this._eventBus?.publish('move:selected-position-changed', { ...position });
+        this.updateDecorationPositions(this.currentLayers);
+        this._renderMoveCopyPreview();
+    }
+
+    _getMapPanCenter(): { x: number; y: number } | null {
+        const xZoom = window.xZoom as LinearScaleLike | undefined;
+        const yZoom = window.yZoom as LinearScaleLike | undefined;
+        if (!xZoom || !yZoom) return null;
+
+        const getCenter = (scale: LinearScaleLike): number | null => {
+            const domain = scale.domain();
+            const range = scale.range();
+            const rangeSpan = range[1] - range[0];
+            if (domain.length < 2 || rangeSpan === 0) return null;
+            const centerRatio = ((range[0] + range[1]) / 2 - range[0]) / rangeSpan;
+            return domain[0] + centerRatio * (domain[1] - domain[0]);
+        };
+
+        const x = getCenter(xZoom);
+        const y = getCenter(yZoom);
+        return x !== null && y !== null && Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    }
+
+    _refreshMoveOffsetFromPanCenter(): void {
+        if (!this._moveSelectedIds || !this._movePanStartCenter) return;
+        const center = this._getMapPanCenter();
+        if (!center) return;
+
+        this._moveCameraOffset = {
+            x: center.x - this._movePanStartCenter.x,
+            y: center.y - this._movePanStartCenter.y
+        };
+        const nextPosition = {
+            x: this._moveManualOffset.x + this._moveCameraOffset.x,
+            y: this._moveManualOffset.y + this._moveCameraOffset.y,
+            z: this._moveManualOffset.z
+        };
+        this._moveCurrentPosition = nextPosition;
+
+        const xZoom = window.xZoom;
+        const yZoom = window.yZoom;
+        if (xZoom && yZoom && this._moveStartPosition) {
+            this._movePreviewOffset = {
+                x: xZoom(this._moveStartPosition.x + nextPosition.x) - xZoom(this._moveStartPosition.x),
+                y: yZoom(this._moveStartPosition.y + nextPosition.y) - yZoom(this._moveStartPosition.y)
+            };
+        }
+        this._eventBus?.publish('move:selected-position-changed', { ...nextPosition });
+        this.updateDecorationPositions(this.currentLayers);
+        this._renderMoveCopyPreview();
+    }
+
+    setMoveSelectedCopyEnabled(enabled: boolean): void {
+        this._moveAsCopy = enabled;
+        this.updateDecorationPositions(this.currentLayers);
+        this._renderMoveCopyPreview();
+    }
+
+    setMoveSelectedCopyTargetLayer(layerId: string): void {
+        this._moveCopyTargetLayerId = layerId;
+    }
+
+    _getLayerDecorations(layer: MapViewerLayer): Decoration[] {
+        return layer.getAllDecorations?.() ?? (layer.decorations instanceof Map
+            ? Array.from(layer.decorations.values())
+            : layer.decorations ?? []);
+    }
+
+    _renderMoveCopyPreview(): void {
+        const xZoom = window.xZoom;
+        const yZoom = window.yZoom;
+        if (!this._moveAsCopy || !this._moveSelectedIds || !xZoom || !yZoom) {
+            domHelpers.empty(this._moveCopyPreviewGroup);
+            this._moveCopyCircles.clear();
+            return;
+        }
+
+        const visibleIds = new Set<string>();
+        for (const layer of this.currentLayers) {
+            if (!layer.isVisible) continue;
+            for (const decoration of this._getLayerDecorations(layer)) {
+                if (!this._moveSelectedIds.has(decoration.uid)) continue;
+                visibleIds.add(decoration.uid);
+                let circle = this._moveCopyCircles.get(decoration.uid);
+                if (!circle) {
+                    circle = this.createDecorationElement(decoration, layer.color) ?? undefined;
+                    if (!circle) continue;
+                    circle.classList.add('move-copy-preview');
+                    this._moveCopyCircles.set(decoration.uid, circle);
+                    this._moveCopyPreviewGroup.appendChild(circle);
+                }
+                circle.setAttribute('cx', String(xZoom(decoration.position.x) + this._movePreviewOffset.x));
+                circle.setAttribute('cy', String(yZoom(decoration.position.y) + this._movePreviewOffset.y));
+            }
+        }
+
+        for (const [id, circle] of this._moveCopyCircles) {
+            if (!visibleIds.has(id)) {
+                circle.remove();
+                this._moveCopyCircles.delete(id);
+            }
+        }
     }
 
     /**

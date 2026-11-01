@@ -77,6 +77,67 @@ describe('DockManager — additional coverage', () => {
         vi.useRealTimers();
     });
 
+    test('shows the Create panel during move mode and restores the normal panels on cancel and save', () => {
+        const appStore = {
+            getState: () => ({
+                layout: null,
+                activeLayerId: 'layer-2',
+                layers: [{ id: 'layer-1', name: 'Garden' }, { id: 'layer-2', name: 'Workshop' }]
+            }),
+            subscribe: vi.fn(() => vi.fn()),
+        };
+        const dm = new DockManager(rootElement, layoutStore, panelContentMap, null, eventBus, appStore);
+        dm.mount();
+
+        eventBus.publish('move:selected-start-requested');
+        expect(rootElement.querySelector('[data-panel-id="create"]')).not.toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="create"] .dock-region-title-text').textContent).toBe('Move Selected');
+        expect(Array.from(rootElement.querySelectorAll('.create-panel-actions button')).map(button => button.textContent)).toEqual(['Save', 'Cancel']);
+        expect(rootElement.querySelector('[data-panel-id="layers"]')).toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="decorationList"]')).toBeNull();
+        const positionInputs = Array.from(rootElement.querySelectorAll('.move-position-input'));
+        expect(positionInputs.map(input => input.dataset.axis)).toEqual(['x', 'y', 'z']);
+        const copyInput = rootElement.querySelector('.move-as-copy-input');
+        expect(copyInput.checked).toBe(false);
+        const targetControl = rootElement.querySelector('.move-copy-target-control');
+        const targetSelect = rootElement.querySelector('.move-copy-target-select');
+        expect(targetControl.hidden).toBe(true);
+        expect(targetSelect.value).toBe('layer-2');
+        expect(Array.from(targetSelect.options).map(option => option.textContent)).toEqual(['Garden', 'Workshop', 'New Layer']);
+
+        let requestedPosition;
+        let requestedCopy;
+        let requestedTarget;
+        eventBus.subscribe('move:selected-position-requested', position => { requestedPosition = position; });
+        eventBus.subscribe('move:selected-copy-changed', enabled => { requestedCopy = enabled; });
+        eventBus.subscribe('move:selected-copy-target-changed', target => { requestedTarget = target; });
+        eventBus.publish('move:selected-position-changed', { x: 10, y: 20, z: 30 });
+        expect(positionInputs.map(input => input.value)).toEqual(['10', '20', '30']);
+        positionInputs[0].value = '42';
+        positionInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+        expect(requestedPosition).toEqual({ x: 42, y: 20, z: 30 });
+        copyInput.checked = true;
+        copyInput.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(requestedCopy).toBe(true);
+        expect(targetControl.hidden).toBe(false);
+        targetSelect.value = 'layer-1';
+        targetSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(requestedTarget).toBe('layer-1');
+
+        rootElement.querySelector('.create-panel-cancel').click();
+        expect(rootElement.querySelector('[data-panel-id="create"]')).toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="layers"]')).not.toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="decorationList"]')).not.toBeNull();
+
+        eventBus.publish('move:selected-start-requested');
+        rootElement.querySelector('.create-panel-save').click();
+        expect(rootElement.querySelector('[data-panel-id="create"]')).toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="layers"]')).not.toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="decorationList"]')).not.toBeNull();
+
+        dm.unmount();
+    });
+
     // ─────────────────────────────────────────────────────────────────────────
     // Lines 80-85: RibbonToolbar initialization
     // ─────────────────────────────────────────────────────────────────────────

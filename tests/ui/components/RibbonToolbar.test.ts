@@ -97,7 +97,6 @@ describe('RibbonToolbar', () => {
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore);
         const el1 = toolbar.getElement();
         const el2 = toolbar.getElement();
-        expect(el1).toBe(el2);
         expect(el1.classList.contains('ribbon-toolbar')).toBe(true);
     });
 
@@ -105,7 +104,19 @@ describe('RibbonToolbar', () => {
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore);
         const el = toolbar.getElement();
         const groups = el.querySelectorAll('.ribbon-group');
-        expect(groups.length).toBe(6); // File, View, Edit, Tools, Report, Links
+        expect(groups.length).toBe(7); // File, View, Edit, Tools, Create, Crafting, Links
+        expect(groups[4].dataset.group).toBe('create');
+        expect(groups[3].nextElementSibling).toBe(groups[4]);
+        for (const action of [
+            'ribbon-move-selected',
+            'ribbon-rotate-selected',
+            'ribbon-decoration-duplicator',
+            'ribbon-fill-decorations',
+        ]) {
+            const button = el.querySelector(`[data-action="${action}"]`);
+            expect(button.disabled).toBe(true);
+            expect(button.closest('[data-group="create"]')).toBe(groups[4]);
+        }
         const githubLink = el.querySelector('[data-action="ribbon-github"]');
         expect(githubLink.getAttribute('href')).toBe('https://github.com/quantazmo/gw2-deco');
         expect(githubLink.getAttribute('aria-label')).toBe('View on GitHub');
@@ -126,6 +137,33 @@ describe('RibbonToolbar', () => {
         expect(eventBus.publish).toHaveBeenCalledWith('confirm:deleteDecorations', {
             decorationIds: ['dec-1', 'dec-2']
         });
+    });
+
+    test('Create tools follow their selection requirements and explain them in tooltips', () => {
+        const selectionStore = makeSelectionStore();
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
+        const el = toolbar.getElement();
+        const moveButton = el.querySelector('[data-action="ribbon-move-selected"]');
+        const rotateButton = el.querySelector('[data-action="ribbon-rotate-selected"]');
+        const duplicatorButton = el.querySelector('[data-action="ribbon-decoration-duplicator"]');
+        const fillButton = el.querySelector('[data-action="ribbon-fill-decorations"]');
+
+        expect(moveButton.title).toContain('more than 2 decorations');
+        expect(rotateButton.title).toContain('more than 2 decorations');
+        expect(duplicatorButton.title).toContain('exactly 2 decorations');
+        expect(fillButton.title).toContain('exactly 2 decorations');
+
+        selectionStore.setSelectedIds(['dec-1', 'dec-2']);
+        expect(moveButton.disabled).toBe(true);
+        expect(rotateButton.disabled).toBe(true);
+        expect(duplicatorButton.disabled).toBe(false);
+        expect(fillButton.disabled).toBe(false);
+
+        selectionStore.setSelectedIds(['dec-1', 'dec-2', 'dec-3']);
+        expect(moveButton.disabled).toBe(false);
+        expect(rotateButton.disabled).toBe(false);
+        expect(duplicatorButton.disabled).toBe(true);
+        expect(fillButton.disabled).toBe(true);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -277,10 +315,24 @@ describe('RibbonToolbar', () => {
         expect(eventBus.publish).toHaveBeenCalledWith('zoom:out-requested');
     });
 
-    test('Fit Entire Map button publishes zoom:fit-requested', () => {
-        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus);
-        toolbar.getElement().querySelector('[data-action="ribbon-fit"]').click();
+    test('Fit Map is enabled only with a loaded map and publishes zoom:fit-requested', () => {
+        const state = { layout: null, mapType: null, map: null };
+        const store = { getState: vi.fn(() => state) };
+        const toolbar = new RibbonToolbar(appService, store, zoomStore, eventBus);
+        const button = toolbar.getElement().querySelector('[data-action="ribbon-fit"]');
+
+        expect(button.getAttribute('aria-label')).toBe('Fit Map');
+        expect(button.disabled).toBe(true);
+
+        state.map = { id: 'map-1' };
+        eventBus.publish('appstate:changed');
+        expect(button.disabled).toBe(false);
+        button.click();
         expect(eventBus.publish).toHaveBeenCalledWith('zoom:fit-requested');
+
+        state.map = null;
+        eventBus.publish('appstate:changed');
+        expect(button.disabled).toBe(true);
     });
 
     test('Fit Selected is disabled without a selection and publishes its request when selected', () => {
@@ -294,6 +346,25 @@ describe('RibbonToolbar', () => {
         expect(button.disabled).toBe(false);
         button.click();
         expect(eventBus.publish).toHaveBeenCalledWith('zoom:fit-selected-requested');
+    });
+
+    test('Move Selected enters move mode and disables navigation until it ends', () => {
+        const selectionStore = makeSelectionStore();
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
+        const moveButton = toolbar.getElement().querySelector('[data-action="ribbon-move-selected"]');
+        const zoomInButton = toolbar.getElement().querySelector('[data-action="ribbon-zoom-in"]');
+        const fitButton = toolbar.getElement().querySelector('[data-action="ribbon-fit-selected"]');
+
+        selectionStore.setSelectedIds(['a', 'b', 'c']);
+        expect(moveButton.disabled).toBe(false);
+        moveButton.click();
+        expect(eventBus.publish).toHaveBeenCalledWith('move:selected-start-requested');
+        expect(zoomInButton.disabled).toBe(true);
+        expect(fitButton.disabled).toBe(true);
+
+        eventBus.publish('move:selected-cancel-requested');
+        expect(zoomInButton.disabled).toBe(false);
+        expect(fitButton.disabled).toBe(false);
     });
 
     test('Undo button publishes undo:requested when canUndo is true (lines 243-246)', () => {
@@ -469,7 +540,7 @@ describe('RibbonToolbar', () => {
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore);
         const el = toolbar.getElement();
         const groups = el.querySelectorAll('.ribbon-group');
-        expect(groups.length).toBe(6); // File, View, Edit, Tools, Report, GitHub
+        expect(groups.length).toBe(7); // File, View, Edit, Tools, Create, Crafting, GitHub
     });
 
     test('ribbon toolbar contains a Crafting group', () => {

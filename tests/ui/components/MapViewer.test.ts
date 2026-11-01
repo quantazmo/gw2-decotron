@@ -266,6 +266,186 @@ describe('MapViewer', () => {
         });
     });
 
+    describe('move selected decorations', () => {
+        it('starts at a zero offset and commits the entered displacement on save', async () => {
+            const svg = makeSvg();
+            const linearScale = (value) => value;
+            linearScale.domain = () => [0, 100];
+            linearScale.range = () => [0, 100];
+            window.xZoom = linearScale;
+            window.yZoom = linearScale;
+
+            const decoration = { uid: 'a', name: 'Decoration A', position: { x: 10, y: 20 } };
+            const layer = { id: 'layer-1', isVisible: true, color: '#00d4ff', decorations: [decoration] };
+            const state = { map: makeMap(1), layers: [layer] };
+            const appStore = makeAppStore(state);
+            const selectionStore = {
+                getSelectedIds: () => ['a'],
+                isSelected: id => id === 'a',
+                subscribe: vi.fn(),
+            };
+            const appService = { execute: vi.fn().mockResolvedValue(undefined) };
+            const viewer = new MapViewer(svg, makeZoomStore(), appStore, selectionStore);
+            viewer.setAppService(appService);
+            const toolModeStore = { setMode: vi.fn() };
+            viewer._toolModeStore = toolModeStore;
+            viewer.render(state);
+
+            const circle = viewer.decorationCircles.get('a');
+            expect(viewer.beginMoveSelected()).toEqual({ x: 0, y: 0, z: 0 });
+            expect(toolModeStore.setMode).toHaveBeenCalledWith('pan');
+            viewer.setMoveSelectedPosition({ x: 10, y: 20, z: 0 });
+            expect(circle.getAttribute('cx')).toBe('20');
+            expect(circle.getAttribute('cy')).toBe('40');
+
+            await viewer.commitMoveSelected();
+            expect(appService.execute).toHaveBeenCalledWith({
+                type: 'UpdateDecorationCommand',
+                payload: { layerId: 'layer-1', decorationId: 'a', position: { x: 20, y: 40, z: 0, rotation: 0 } }
+            });
+        });
+
+        it('derives XY offsets from the change in viewport world center', () => {
+            const svg = makeSvg();
+            const makeScale = initialDomain => {
+                let domain = initialDomain;
+                const scale = value => (value - domain[0]) / (domain[1] - domain[0]) * 100;
+                scale.domain = () => domain;
+                scale.range = () => [0, 100];
+                scale.setDomain = nextDomain => { domain = nextDomain; };
+                return scale;
+            };
+            const xScale = makeScale([0, 100]);
+            const yScale = makeScale([0, 100]);
+            window.xZoom = xScale;
+            window.yZoom = yScale;
+
+            const decoration = { uid: 'a', name: 'Decoration A', position: { x: 10, y: 20 } };
+            const layer = { id: 'layer-1', isVisible: true, color: '#00d4ff', decorations: [decoration] };
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(), {
+                getSelectedIds: () => ['a'],
+                isSelected: id => id === 'a',
+                subscribe: vi.fn(),
+            });
+            viewer.render({ map: makeMap(1), layers: [layer] });
+            const circle = viewer.decorationCircles.get('a');
+            viewer.beginMoveSelected();
+
+            xScale.setDomain([10, 110]);
+            yScale.setDomain([20, 120]);
+            viewer.updateTransform({});
+
+            expect(viewer._moveCurrentPosition).toEqual({ x: 10, y: 20, z: 0 });
+            expect(circle.getAttribute('cx')).toBe('10');
+            expect(circle.getAttribute('cy')).toBe('20');
+        });
+
+        it('keeps originals in place and commits preview copies at the requested XYZ position', async () => {
+            const svg = makeSvg();
+            const linearScale = (value) => value;
+            linearScale.domain = () => [0, 100];
+            linearScale.range = () => [0, 100];
+            window.xZoom = linearScale;
+            window.yZoom = linearScale;
+
+            const decoration = { uid: 'a', name: 'Decoration A', position: { x: 10, y: 20, z: 3 } };
+            const layer = { id: 'layer-1', isVisible: true, color: '#00d4ff', decorations: [decoration] };
+            const state = { map: makeMap(1), layers: [layer] };
+            const selectionStore = {
+                getSelectedIds: () => ['a'],
+                isSelected: id => id === 'a',
+                selectAll: vi.fn(),
+                subscribe: vi.fn(),
+            };
+            const appService = {
+                execute: vi.fn(async command => command.type === 'CopyDecorationsCommand'
+                    ? { decorationIds: ['copy-a'] }
+                    : undefined),
+            };
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(state), selectionStore);
+            viewer.setAppService(appService);
+            viewer.render(state);
+
+            const original = viewer.decorationCircles.get('a');
+            viewer.beginMoveSelected();
+            viewer.setMoveSelectedCopyEnabled(true);
+            viewer.setMoveSelectedCopyTargetLayer('target-layer');
+            viewer.setMoveSelectedPosition({ x: 20, y: 20, z: 5 });
+            const preview = viewer._moveCopyPreviewGroup.querySelector('[data-decoration-id="a"]');
+            expect(original.getAttribute('cx')).toBe('10');
+            expect(original.getAttribute('cy')).toBe('20');
+            expect(preview.getAttribute('cx')).toBe('30');
+            expect(preview.getAttribute('cy')).toBe('40');
+
+            await viewer.commitMoveSelected();
+            expect(appService.execute).toHaveBeenNthCalledWith(1, {
+                type: 'CopyDecorationsCommand',
+                payload: { decorationIds: ['a'], targetLayerId: 'target-layer' }
+            });
+            expect(appService.execute).toHaveBeenNthCalledWith(2, {
+                type: 'UpdateDecorationCommand',
+                payload: {
+                    layerId: 'target-layer',
+                    decorationId: 'copy-a',
+                    position: { x: 30, y: 40, z: 8, rotation: 0 }
+                }
+            });
+            expect(selectionStore.selectAll).toHaveBeenCalledWith(['copy-a']);
+        });
+
+        it('creates a new target layer before copying when New Layer is selected', async () => {
+            const svg = makeSvg();
+            const linearScale = value => value;
+            linearScale.domain = () => [0, 100];
+            linearScale.range = () => [0, 100];
+            window.xZoom = linearScale;
+            window.yZoom = linearScale;
+
+            const decoration = { uid: 'a', name: 'Decoration A', position: { x: 10, y: 20, z: 0 } };
+            const layer = { id: 'source-layer', isVisible: true, decorations: [decoration] };
+            const state = { map: makeMap(1), layers: [layer] };
+            const selectionStore = {
+                getSelectedIds: () => ['a'],
+                isSelected: id => id === 'a',
+                selectAll: vi.fn(),
+                subscribe: vi.fn(),
+            };
+            const appService = {
+                execute: vi.fn(async command => {
+                    if (command.type === 'CreateLayerCommand') return { id: 'new-layer' };
+                    if (command.type === 'CopyDecorationsCommand') return { decorationIds: ['copy-a'] };
+                    return undefined;
+                }),
+            };
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(state), selectionStore);
+            viewer.setAppService(appService);
+            viewer.render(state);
+            viewer.beginMoveSelected();
+            viewer.setMoveSelectedCopyEnabled(true);
+            viewer.setMoveSelectedCopyTargetLayer('__new__');
+            viewer.setMoveSelectedPosition({ x: 4, y: 6, z: 2 });
+
+            await viewer.commitMoveSelected();
+
+            expect(appService.execute).toHaveBeenNthCalledWith(1, {
+                type: 'CreateLayerCommand',
+                payload: { isVisible: true }
+            });
+            expect(appService.execute).toHaveBeenNthCalledWith(2, {
+                type: 'CopyDecorationsCommand',
+                payload: { decorationIds: ['a'], targetLayerId: 'new-layer' }
+            });
+            expect(appService.execute).toHaveBeenNthCalledWith(3, {
+                type: 'UpdateDecorationCommand',
+                payload: {
+                    layerId: 'new-layer',
+                    decorationId: 'copy-a',
+                    position: { x: 14, y: 26, z: 2, rotation: 0 }
+                }
+            });
+        });
+    });
+
     describe('pan drag preserves selection', () => {
         it('does not clear selection when a drag (pan) precedes the click on empty area', () => {
             const svg = makeSvg();

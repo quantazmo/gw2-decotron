@@ -11,7 +11,7 @@ import { DockRegion } from './DockRegion.js';
 import { TabbedContainer } from './TabbedContainer.js';
 import { StackedContainer } from './StackedContainer.js';
 import { RibbonToolbar } from './RibbonToolbar.js';
-import { DockLayoutConfiguration, replaceNode, createTabGroupNode, createSplitNode, findNode } from '../../domain/DockLayoutConfiguration.js';
+import { DockLayoutConfiguration, replaceNode, createTabGroupNode, createSplitNode, createPanelNode, findNode } from '../../domain/DockLayoutConfiguration.js';
 import { ResizeDockCommand } from '../../application/commands/ResizeDockCommand.js';
 import { LAYOUT, PANEL_IDS } from '../../config/constants.js';
 import type { DockLayoutNode, DockNodePath, PanelNode, SplitNode, TabGroupNode } from '../../domain/DockLayoutConfiguration.js';
@@ -26,11 +26,13 @@ import type { DockPanelLayoutStore } from '../stores/DockPanelLayoutStore.js';
 
 /** Minimum interval (ms) between resize re-renders to avoid layout thrashing. */
 const RESIZE_DEBOUNCE_MS = 150;
+const CREATE_PANEL_WIDTH_KEY = 'gw2-decoration-editor-create-panel-width';
 
 const PANEL_LABELS: Record<string, string> = {
     map: 'Map',
     layers: 'Layers',
-    decorationList: 'Decoration List'
+    decorationList: 'Decoration List',
+    create: 'Move Selected'
 };
 
 export class DockManager {
@@ -50,6 +52,12 @@ export class DockManager {
     private _resizeHandler: (() => void) | null;
     private _resizeTimer: ReturnType<typeof setTimeout> | null;
     private _currentMapName: string | null;
+    private _moveModeActive: boolean;
+    private _createMapRatio: number | null;
+    private _unsubscribeMoveMode: (() => void) | null;
+    private _moveSelectedPosition: { x: number; y: number; z: number } | null;
+    private _moveAsCopy: boolean;
+    private _moveCopyTargetLayerId: string | null;
 
     /**
      * @param {HTMLElement} rootElement     Container div (#dock-manager-root)
@@ -91,6 +99,12 @@ export class DockManager {
         this._resizeHandler = null;
         this._resizeTimer = null;
         this._currentMapName = null;
+        this._moveModeActive = false;
+        this._createMapRatio = null;
+        this._unsubscribeMoveMode = null;
+        this._moveSelectedPosition = null;
+        this._moveAsCopy = false;
+        this._moveCopyTargetLayerId = null;
     }
 
     /**
@@ -106,6 +120,36 @@ export class DockManager {
 
         this._unsubscribe = this.layoutStore.subscribe(() => this._render());
         this._render();
+
+        if (this._eventBus) {
+            const unsubs = [
+                this._eventBus.subscribe('move:selected-start-requested', () => {
+                    this._moveModeActive = true;
+                    this._moveSelectedPosition = null;
+                    this._moveAsCopy = false;
+                    const state = this._appStore?.getState();
+                    this._moveCopyTargetLayerId = state?.activeLayerId ?? state?.layers?.[0]?.id ?? '__new__';
+                    this._eventBus?.publish('move:selected-copy-target-changed', this._moveCopyTargetLayerId);
+                    this._render();
+                }),
+                this._eventBus.subscribe('move:selected-save-requested', () => {
+                    this._moveModeActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe('move:selected-cancel-requested', () => {
+                    this._moveModeActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe<{ x: number; y: number; z: number }>('move:selected-position-changed', position => {
+                    this._moveSelectedPosition = { ...position };
+                    this._syncMovePositionInputs();
+                }),
+                this._eventBus.subscribe<boolean>('move:selected-copy-changed', enabled => {
+                    this._moveAsCopy = enabled;
+                })
+            ];
+            this._unsubscribeMoveMode = () => unsubs.forEach(unsubscribe => unsubscribe());
+        }
 
         // Add RibbonToolbar above the layout tree
         if (this._appService && this._appStore && this._zoomStore) {
@@ -152,6 +196,8 @@ export class DockManager {
             this._unsubscribe();
             this._unsubscribe = null;
         }
+        this._unsubscribeMoveMode?.();
+        this._unsubscribeMoveMode = null;
         if (this._ribbon) {
             this._ribbon.unmount();
             this._ribbon = null;
@@ -178,8 +224,41 @@ export class DockManager {
         }
 
         const layout = this.layoutStore.getState();
-        const rendered = this._renderNode(layout.tree, []);
+        const rendered = this._moveModeActive
+            ? this._renderMoveMode(layout.tree)
+            : this._renderNode(layout.tree, []);
         container.appendChild(rendered);
+    }
+
+    _renderMoveMode(tree: DockLayoutNode): HTMLElement {
+        const split = findNode(tree, node => node.type === 'split' &&
+            findNode(node, child => child.type === 'panel' && child.panelId === PANEL_IDS.MAP) !== null);
+        const splitNode = split?.node.type === 'split' ? split.node : null;
+        if (this._createMapRatio === null) {
+            const storedWidth = Number(localStorage.getItem(CREATE_PANEL_WIDTH_KEY));
+            const mapRatio = splitNode
+                ? (findNode(splitNode.first, node => node.type === 'panel' && node.panelId === PANEL_IDS.MAP) ? splitNode.ratio : 1 - splitNode.ratio)
+                : 0.8125;
+            this._createMapRatio = Number.isFinite(storedWidth) && storedWidth >= 0.1 && storedWidth <= 0.5
+                ? 1 - storedWidth
+                : mapRatio;
+        }
+
+        const mapNode = createPanelNode(PANEL_IDS.MAP);
+        const createNode = createPanelNode('create');
+        const mapFirst = !splitNode || !!findNode(splitNode.first, node => node.type === 'panel' && node.panelId === PANEL_IDS.MAP);
+        const map = this._renderNode(mapNode, []);
+        const create = this._renderPanelNode(createNode);
+        const ratio = mapFirst ? this._createMapRatio : 1 - this._createMapRatio;
+        const customSplit = createSplitNode('vertical', ratio, mapFirst ? mapNode : createNode, mapFirst ? createNode : mapNode);
+        const first = mapFirst ? map : create;
+        const second = mapFirst ? create : map;
+        const divider = new StackedContainer(customSplit, first, second, newRatio => {
+            this._createMapRatio = mapFirst ? newRatio : 1 - newRatio;
+            localStorage.setItem(CREATE_PANEL_WIDTH_KEY, String(1 - this._createMapRatio));
+            this._render();
+        }, mapFirst ? { minRatio: LAYOUT.MAP_MIN_RATIO } : { maxRatio: 1 - LAYOUT.MAP_MIN_RATIO });
+        return divider.getElement();
     }
 
     /**
@@ -208,7 +287,7 @@ export class DockManager {
 
     /** @private */
     _renderPanelNode(node: PanelNode): HTMLElement {
-        const contentEl = this.panelContentMap[node.panelId] || null;
+        const contentEl = node.panelId === 'create' ? this._createPanelContent() : this.panelContentMap[node.panelId] || null;
         const baseLabel = PANEL_LABELS[node.panelId] || node.panelId;
         const label = (node.panelId === 'map' && this._currentMapName)
             ? `${baseLabel} — ${this._currentMapName}`
@@ -220,6 +299,104 @@ export class DockManager {
         wrapper.dataset.panelId = node.panelId;
         wrapper.appendChild(region.getElement());
         return wrapper;
+    }
+
+    _createPanelContent(): HTMLElement {
+        const content = document.createElement('div');
+        content.className = 'create-panel-content';
+        const message = document.createElement('p');
+        message.className = 'create-panel-hint';
+        message.textContent = 'Pan the map or enter an offset for the selected decorations.';
+        const fields = document.createElement('div');
+        fields.className = 'move-position-fields';
+        (['x', 'y', 'z'] as const).forEach(axis => {
+            const label = document.createElement('label');
+            label.className = 'move-position-field';
+            const caption = document.createElement('span');
+            caption.textContent = axis.toUpperCase();
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.step = 'any';
+            input.className = 'move-position-input';
+            input.dataset.axis = axis;
+            input.setAttribute('aria-label', `${axis.toUpperCase()} offset`);
+            input.value = this._moveSelectedPosition ? String(this._moveSelectedPosition[axis]) : '';
+            input.addEventListener('input', () => {
+                const values = Array.from(fields.querySelectorAll<HTMLInputElement>('.move-position-input'));
+                if (values.length !== 3 || values.some(field => !Number.isFinite(field.valueAsNumber))) return;
+                const position = {
+                    x: fields.querySelector<HTMLInputElement>('[data-axis="x"]')!.valueAsNumber,
+                    y: fields.querySelector<HTMLInputElement>('[data-axis="y"]')!.valueAsNumber,
+                    z: fields.querySelector<HTMLInputElement>('[data-axis="z"]')!.valueAsNumber
+                };
+                this._eventBus?.publish('move:selected-position-requested', position);
+            });
+            label.append(caption, input);
+            fields.appendChild(label);
+        });
+        const copyLabel = document.createElement('label');
+        copyLabel.className = 'move-as-copy-control';
+        const copyInput = document.createElement('input');
+        copyInput.type = 'checkbox';
+        copyInput.className = 'move-as-copy-input';
+        copyInput.checked = this._moveAsCopy;
+        copyInput.addEventListener('change', () => {
+            this._moveAsCopy = copyInput.checked;
+            targetControl.hidden = !copyInput.checked;
+            this._eventBus?.publish('move:selected-copy-changed', copyInput.checked);
+        });
+        const copyText = document.createElement('span');
+        copyText.textContent = 'Move as Copy';
+        copyLabel.append(copyInput, copyText);
+        const targetControl = document.createElement('label');
+        targetControl.className = 'move-copy-target-control';
+        targetControl.hidden = !copyInput.checked;
+        const targetCaption = document.createElement('span');
+        targetCaption.textContent = 'Target Layer';
+        const targetSelect = document.createElement('select');
+        targetSelect.className = 'move-copy-target-select';
+        targetSelect.setAttribute('aria-label', 'Target layer for copied decorations');
+        const state = this._appStore?.getState();
+        (state?.layers ?? []).forEach(layer => {
+            const option = document.createElement('option');
+            option.value = layer.id;
+            option.textContent = layer.name || `Layer ${layer.id}`;
+            targetSelect.appendChild(option);
+        });
+        const newLayerOption = document.createElement('option');
+        newLayerOption.value = '__new__';
+        newLayerOption.textContent = 'New Layer';
+        targetSelect.appendChild(newLayerOption);
+        targetSelect.value = this._moveCopyTargetLayerId ?? state?.activeLayerId ?? state?.layers?.[0]?.id ?? '__new__';
+        this._moveCopyTargetLayerId = targetSelect.value;
+        targetSelect.addEventListener('change', () => {
+            this._moveCopyTargetLayerId = targetSelect.value;
+            this._eventBus?.publish('move:selected-copy-target-changed', targetSelect.value);
+        });
+        targetControl.append(targetCaption, targetSelect);
+        const actions = document.createElement('div');
+        actions.className = 'create-panel-actions';
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'create-panel-cancel';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', () => this._eventBus?.publish('move:selected-cancel-requested'));
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'create-panel-save';
+        save.textContent = 'Save';
+        save.addEventListener('click', () => this._eventBus?.publish('move:selected-save-requested'));
+        actions.append(save, cancel);
+        content.append(message, fields, copyLabel, targetControl, actions);
+        return content;
+    }
+
+    _syncMovePositionInputs(): void {
+        if (!this._moveSelectedPosition) return;
+        this._treeContainer?.querySelectorAll<HTMLInputElement>('.move-position-input').forEach(input => {
+            const axis = input.dataset.axis as 'x' | 'y' | 'z' | undefined;
+            if (axis) input.value = String(this._moveSelectedPosition![axis]);
+        });
     }
 
     /** @private */

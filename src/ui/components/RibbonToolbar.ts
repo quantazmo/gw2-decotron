@@ -24,6 +24,7 @@ type RibbonWindow = Window & {
  * Undo/Redo buttons reflect UndoRedoManager state.
  * Export button reflects context-sensitive disabled state.
  * Tools group allows switching between Map Pan and Multi Select tool modes.
+ * Create group contains planned decoration manipulation tools.
  */
 
 export class RibbonToolbar {
@@ -42,7 +43,15 @@ export class RibbonToolbar {
     private _lassoBtn: HTMLButtonElement | null;
     private _reportBtn: HTMLButtonElement | null;
     private _deleteSelectedBtn: HTMLButtonElement | null;
+    private _zoomInBtn: HTMLButtonElement | null;
+    private _zoomOutBtn: HTMLButtonElement | null;
+    private _moveModeActive: boolean;
+    private _fitMapBtn: HTMLButtonElement | null;
     private _fitSelectedBtn: HTMLButtonElement | null;
+    private _moveSelectedBtn: HTMLButtonElement | null;
+    private _rotateSelectedBtn: HTMLButtonElement | null;
+    private _decorationDuplicatorBtn: HTMLButtonElement | null;
+    private _fillDecorationsBtn: HTMLButtonElement | null;
     private _selectionStore: SelectionStore | null;
     private _loadFromUrlDialog: LoadFromUrlDialog | null;
     private _craftMissingDecorationsDialog: CraftMissingDecorationsDialog | null;
@@ -75,7 +84,15 @@ export class RibbonToolbar {
         this._lassoBtn = null;
         this._reportBtn = null;
         this._deleteSelectedBtn = null;
+        this._zoomInBtn = null;
+        this._zoomOutBtn = null;
+        this._moveModeActive = false;
+        this._fitMapBtn = null;
         this._fitSelectedBtn = null;
+        this._moveSelectedBtn = null;
+        this._rotateSelectedBtn = null;
+        this._decorationDuplicatorBtn = null;
+        this._fillDecorationsBtn = null;
         this._loadFromUrlDialog = null;
         this._craftMissingDecorationsDialog = null;
 
@@ -114,9 +131,10 @@ export class RibbonToolbar {
         ]));
 
         toolbar.appendChild(this._createGroup('View', [
-            this._makeBtn('Zoom In', 'ribbon-zoom-in', () => this._onZoomIn()),
-            this._makeBtn('Zoom Out', 'ribbon-zoom-out', () => this._onZoomOut()),
-            this._makeBtn('Fit Entire Map', 'ribbon-fit', () => this._onFit()),
+            this._makeBtn('Zoom In', 'ribbon-zoom-in', () => this._onZoomIn(), btn => { this._zoomInBtn = btn; }),
+            this._makeBtn('Zoom Out', 'ribbon-zoom-out', () => this._onZoomOut(), btn => { this._zoomOutBtn = btn; }),
+            this._makeBtn('Fit Map', 'ribbon-fit', () => this._onFit(),
+                btn => { this._fitMapBtn = btn; }),
             this._makeBtn('Fit Selected', 'ribbon-fit-selected', () => this._onFitSelected(),
                 btn => { this._fitSelectedBtn = btn; }),
         ]));
@@ -138,6 +156,27 @@ export class RibbonToolbar {
             this._makeToggleBtn('Lasso Select', 'tool-lasso', () => this._onToolMode('lasso'),
                 btn => { this._lassoBtn = btn; }),
         ]));
+
+        const createButtons = [
+            this._makeBtn('Move Selected', 'ribbon-move-selected', () => this._onMoveSelected(), btn => {
+                this._moveSelectedBtn = btn;
+                btn.title = 'Move Selected (select more than 2 decorations)';
+            }),
+            this._makeBtn('Rotate Selected', 'ribbon-rotate-selected', () => { }, btn => {
+                this._rotateSelectedBtn = btn;
+                btn.title = 'Rotate Selected (select more than 2 decorations)';
+            }),
+            this._makeBtn('Decoration Duplicator', 'ribbon-decoration-duplicator', () => { }, btn => {
+                this._decorationDuplicatorBtn = btn;
+                btn.title = 'Decoration Duplicator (select exactly 2 decorations)';
+            }),
+            this._makeBtn('Fill Decorations', 'ribbon-fill-decorations', () => { }, btn => {
+                this._fillDecorationsBtn = btn;
+                btn.title = 'Fill Decorations (select exactly 2 decorations)';
+            }),
+        ];
+        createButtons.forEach(button => { button.disabled = true; });
+        toolbar.appendChild(this._createGroup('Create', createButtons));
 
         toolbar.appendChild(this._createGroup('Crafting', [
             this._makeBtn('Craft Missing Decorations', 'ribbon-decoration-report', () => this._onReport(),
@@ -173,6 +212,12 @@ export class RibbonToolbar {
         if (this._selectionStore) {
             const unsub = this._selectionStore.subscribe(() => this._updateState());
             this._unsubscribers.push(unsub);
+        }
+        if (this._eventBus) {
+            const startUnsub = this._eventBus.subscribe('move:selected-start-requested', () => this._setNavigationEnabled(false));
+            const saveUnsub = this._eventBus.subscribe('move:selected-save-requested', () => this._setNavigationEnabled(true));
+            const cancelUnsub = this._eventBus.subscribe('move:selected-cancel-requested', () => this._setNavigationEnabled(true));
+            this._unsubscribers.push(startUnsub, saveUnsub, cancelUnsub);
         }
     }
 
@@ -221,6 +266,10 @@ export class RibbonToolbar {
             'tool-pan': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>`,
             'tool-select': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" stroke-dasharray="4 2"/></svg>`,
             'tool-lasso': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.5c0 4.4-5.3 8-10.2 7.2-4.1-.7-7.3-3.6-7.3-7.4S6.2 5 10.1 4.2c4.2-.8 8.6 1.5 9.5 5.2.5 2-1.1 3.6-3 3.6-1.5 0-2.2-1.1-1.7-2.2.4-.8 1.5-.9 2-.3"/></svg>`,
+            'ribbon-move-selected': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4"/><path d="M18 13.5v9M13.5 18h9M16.5 15.5l1.5-2 1.5 2M16.5 20.5l1.5 1.5 1.5-1.5M15.5 16.5l-2 1.5 2 1.5M20.5 16.5l1.5 1.5-1.5 1.5" stroke-width="1.5" transform="translate(-8.7 -8.7) scale(1.15)"/></svg>`,
+            'ribbon-rotate-selected': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4"/><path d="M20.5 16.5a4 4 0 1 0 .5 3.2M20.5 14.5v2.5H18" stroke-width="1.6" transform="translate(-8.2 -9.2) scale(1.15)"/></svg>`,
+            'ribbon-decoration-duplicator': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(180 12 12)"><g transform="translate(0 24) scale(1 -1)"><rect x="11" y="1" width="12" height="12" rx="1.5" fill="var(--toolbar-bg)"/><rect x="8" y="4" width="12" height="12" rx="1.5" fill="var(--toolbar-bg)"/><rect x="5" y="7" width="12" height="12" rx="1.5" stroke-dasharray="0 2.5" fill="var(--toolbar-bg)"/><rect x="2" y="10" width="12" height="12" rx="1.5" stroke-dasharray="0 2.5" fill="var(--toolbar-bg)"/></g></g></svg>`,
+            'ribbon-fill-decorations': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(180 12 12)"><g transform="translate(0 24) scale(1 -1)"><rect x="11" y="1" width="12" height="12" rx="1.5" fill="var(--toolbar-bg)"/><rect x="8" y="4" width="12" height="12" rx="1.5" stroke-dasharray="0 2.5" fill="var(--toolbar-bg)"/><rect x="5" y="7" width="12" height="12" rx="1.5" stroke-dasharray="0 2.5" fill="var(--toolbar-bg)"/><rect x="2" y="10" width="12" height="12" rx="1.5" fill="var(--toolbar-bg)"/></g></g></svg>`,
             'ribbon-decoration-report': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
             'ribbon-github': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`,
         };
@@ -281,6 +330,7 @@ export class RibbonToolbar {
         const state = this._appStore?.getState();
         const hasLayout = !!state?.layout;
         const isGuildHall = state?.mapType === MapType.GuildHall;
+        const selectedCount = this._selectionStore?.getSelectedIds().length ?? 0;
 
         if (this._exportBtn) {
             this._exportBtn.disabled = !hasLayout;
@@ -308,10 +358,25 @@ export class RibbonToolbar {
             }
         }
         if (this._deleteSelectedBtn) {
-            this._deleteSelectedBtn.disabled = (this._selectionStore?.getSelectedIds().length ?? 0) === 0;
+            this._deleteSelectedBtn.disabled = selectedCount === 0;
         }
         if (this._fitSelectedBtn) {
-            this._fitSelectedBtn.disabled = (this._selectionStore?.getSelectedIds().length ?? 0) === 0;
+            this._fitSelectedBtn.disabled = this._moveModeActive || selectedCount === 0;
+        }
+        if (this._fitMapBtn) {
+            this._fitMapBtn.disabled = this._moveModeActive || !state?.map;
+        }
+        if (this._moveSelectedBtn) {
+            this._moveSelectedBtn.disabled = this._moveModeActive || selectedCount <= 2;
+        }
+        if (this._rotateSelectedBtn) {
+            this._rotateSelectedBtn.disabled = selectedCount <= 2;
+        }
+        if (this._decorationDuplicatorBtn) {
+            this._decorationDuplicatorBtn.disabled = selectedCount !== 2;
+        }
+        if (this._fillDecorationsBtn) {
+            this._fillDecorationsBtn.disabled = selectedCount !== 2;
         }
 
         // Sync tool mode toggle buttons
@@ -325,6 +390,9 @@ export class RibbonToolbar {
         if (this._lassoBtn) {
             this._lassoBtn.setAttribute('aria-pressed', currentMode === 'lasso' ? 'true' : 'false');
         }
+        [this._panBtn, this._selectBtn, this._lassoBtn].forEach(button => {
+            if (button) button.disabled = this._moveModeActive;
+        });
         if (this._reportBtn) {
             this._reportBtn.disabled = !hasLayout || isGuildHall;
         }
@@ -430,6 +498,13 @@ export class RibbonToolbar {
     _onZoomOut(): void { this._eventBus?.publish('zoom:out-requested'); }
     _onFit(): void { this._eventBus?.publish('zoom:fit-requested'); }
     _onFitSelected(): void { this._eventBus?.publish('zoom:fit-selected-requested'); }
+    _onMoveSelected(): void { this._eventBus?.publish('move:selected-start-requested'); }
+    _setNavigationEnabled(enabled: boolean): void {
+        this._moveModeActive = !enabled;
+        if (this._zoomInBtn) this._zoomInBtn.disabled = this._moveModeActive;
+        if (this._zoomOutBtn) this._zoomOutBtn.disabled = this._moveModeActive;
+        this._updateState();
+    }
     _onUndo(): void {
         if (this._undoRedoManager && this._undoRedoManager.canUndo()) {
             if (this._eventBus) {
