@@ -116,14 +116,14 @@ describe('DecorationInfoDialog', () => {
         });
 
         test('should render editable rotation input in radians', () => {
-            const promise = dialog.show({ decoration: makeDecoration({ rotation: 1.2 }) });
+            const promise = dialog.show({ decoration: makeDecoration({ rotation: 1.2 }), angleUnit: 'radians' });
             expect(document.querySelector('[name="rotation"]').value).toBe('1.2');
             document.querySelector('.decoration-info-dialog__save').click();
             return promise;
         });
 
         test('should render editable rotX and rotZ inputs', () => {
-            const promise = dialog.show({ decoration: makeDecoration({ rotX: 0.25, rotZ: 0.5 }) });
+            const promise = dialog.show({ decoration: makeDecoration({ rotX: 0.25, rotZ: 0.5 }), angleUnit: 'radians' });
             expect(document.querySelector('[name="rotX"]').value).toBe('0.25');
             expect(document.querySelector('[name="rotZ"]').value).toBe('0.5');
             document.querySelector('.decoration-info-dialog__save').click();
@@ -138,7 +138,7 @@ describe('DecorationInfoDialog', () => {
         });
 
         test('should apply sample-derived bounds to editable fields', () => {
-            const promise = dialog.show({ decoration: makeDecoration() });
+            const promise = dialog.show({ decoration: makeDecoration(), angleUnit: 'radians' });
             for (const field of ['positionX', 'positionY', 'positionZ']) {
                 expect(document.querySelector(`[name="${field}"]`).min).toBe('-32768');
                 expect(document.querySelector(`[name="${field}"]`).max).toBe('32768');
@@ -154,7 +154,8 @@ describe('DecorationInfoDialog', () => {
             const promise = dialog.show({
                 decoration: makeDecoration(),
                 layers: [{ id: 'layer-1', name: 'Layer One' }, { id: 'layer-2', name: 'Layer Two' }],
-                selectedLayerId: 'layer-1'
+                selectedLayerId: 'layer-1',
+                angleUnit: 'radians'
             });
             const layerSelect = document.querySelector('.decoration-info-dialog__layer-select');
             expect(layerSelect.value).toBe('layer-1');
@@ -183,6 +184,23 @@ describe('DecorationInfoDialog', () => {
             layerSelect.value = '__create_new_layer__';
             document.querySelector('.decoration-info-dialog__save').click();
             await expect(promise).resolves.toMatchObject({ layerSelection: { kind: 'new' } });
+        });
+
+        test('displays degrees and converts edited angles back to radians', async () => {
+            const promise = dialog.show({ decoration: makeDecoration({ rotation: Math.PI / 2 }), angleUnit: 'degrees' });
+            const rotationInput = document.querySelector('[name="rotation"]');
+            expect(rotationInput.value).toBe('90');
+            expect(rotationInput.max).toBe('360');
+            expect(document.querySelector('label[for$="-rotation"]').textContent).toBe('Rotation Y (deg)');
+
+            rotationInput.value = '180';
+            document.querySelector('[name="rotX"]').value = '45';
+            document.querySelector('[name="rotZ"]').value = '270';
+            document.querySelector('.decoration-info-dialog__save').click();
+            const result = await promise;
+            expect(result.updates.rotation).toBeCloseTo(Math.PI);
+            expect(result.updates.rotX).toBeCloseTo(Math.PI / 4);
+            expect(result.updates.rotZ).toBeCloseTo(3 * Math.PI / 2);
         });
 
         test('should return null when cancelled', async () => {

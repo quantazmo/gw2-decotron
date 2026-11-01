@@ -69,6 +69,12 @@ describe('SettingsDialog', () => {
         test('contains a Reset Layout button', () => {
             expect(document.querySelector('.settings-dialog__reset')?.textContent).toBe('Reset Layout');
         });
+
+        test('contains a rotation unit selector defaulting to degrees', () => {
+            const unitSelect = document.querySelector('select[id$="-angle-unit"]');
+            expect(unitSelect.value).toBe('degrees');
+            expect(Array.from(unitSelect.options).map(option => option.value)).toEqual(['degrees', 'radians']);
+        });
     });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -138,7 +144,7 @@ describe('SettingsDialog', () => {
             document.querySelector('.settings-dialog__input').value = 'new-api-key';
             document.querySelector('.settings-dialog__save').click();
             const result = await promise;
-            expect(result).toEqual({ apiKey: 'new-api-key', theme: 'system' });
+            expect(result).toEqual({ apiKey: 'new-api-key', theme: 'system', angleUnit: 'degrees' });
         });
 
         test('trims whitespace from the API key on Save', async () => {
@@ -146,7 +152,7 @@ describe('SettingsDialog', () => {
             document.querySelector('.settings-dialog__input').value = '  trimmed-key  ';
             document.querySelector('.settings-dialog__save').click();
             const result = await promise;
-            expect(result).toEqual({ apiKey: 'trimmed-key', theme: 'system' });
+            expect(result).toEqual({ apiKey: 'trimmed-key', theme: 'system', angleUnit: 'degrees' });
         });
 
         test('resolves with empty string when API key is cleared and saved', async () => {
@@ -154,14 +160,21 @@ describe('SettingsDialog', () => {
             document.querySelector('.settings-dialog__input').value = '';
             document.querySelector('.settings-dialog__save').click();
             const result = await promise;
-            expect(result).toEqual({ apiKey: '', theme: 'system' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
         });
 
         test('returns the unchanged pre-populated value when saved without editing', async () => {
             const promise = dialog.show({ apiKey: 'original-key' });
             document.querySelector('.settings-dialog__save').click();
             const result = await promise;
-            expect(result).toEqual({ apiKey: 'original-key', theme: 'system' });
+            expect(result).toEqual({ apiKey: 'original-key', theme: 'system', angleUnit: 'degrees' });
+        });
+
+        test('returns the selected rotation unit on Save', async () => {
+            const promise = dialog.show({ apiKey: '', angleUnit: 'radians' });
+            document.querySelector('select[id$="-angle-unit"]').value = 'radians';
+            document.querySelector('.settings-dialog__save').click();
+            await expect(promise).resolves.toMatchObject({ angleUnit: 'radians' });
         });
     });
 

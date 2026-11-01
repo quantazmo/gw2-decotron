@@ -43,6 +43,7 @@ export interface DecorationInfoResult {
 }
 
 const NEW_LAYER_OPTION_VALUE = '__create_new_layer__';
+type AngleUnit = 'degrees' | 'radians';
 
 export class DecorationInfoDialog {
     private _id: string;
@@ -55,6 +56,7 @@ export class DecorationInfoDialog {
     private _saveBtn!: HTMLButtonElement;
     private _cancelBtn!: HTMLButtonElement;
     private _decorationId: string | null = null;
+    private _angleUnit: AngleUnit = 'degrees';
     private _numericInputs = new Map<DecorationNumericField, HTMLInputElement>();
 
     constructor() {
@@ -65,13 +67,14 @@ export class DecorationInfoDialog {
         document.body.appendChild(this._dialogEl);
     }
 
-    show({ decoration, layers = [], selectedLayerId = '', iconUrl }: {
+    show({ decoration, layers = [], selectedLayerId = '', iconUrl, angleUnit }: {
         decoration: DecorationInfo;
         layers?: DecorationLayerOption[];
         selectedLayerId?: string;
         iconUrl?: string;
+        angleUnit?: AngleUnit;
     }): Promise<DecorationInfoResult | null> {
-        this._populate(decoration, layers, selectedLayerId, iconUrl);
+        this._populate(decoration, layers, selectedLayerId, iconUrl, angleUnit);
 
         if (typeof this._dialogEl.showModal === 'function') {
             this._dialogEl.showModal();
@@ -87,7 +90,8 @@ export class DecorationInfoDialog {
     }
 
     /** @private */
-    _populate(decoration: DecorationInfo, layers: DecorationLayerOption[], selectedLayerId: string, iconUrl?: string): void {
+    _populate(decoration: DecorationInfo, layers: DecorationLayerOption[], selectedLayerId: string, iconUrl?: string, angleUnit: AngleUnit = 'degrees'): void {
+        this._angleUnit = angleUnit === 'radians' ? 'radians' : 'degrees';
         this._decorationId = decoration.id;
         this._iconEl.hidden = !iconUrl;
         this._iconEl.removeAttribute('src');
@@ -158,10 +162,20 @@ export class DecorationInfoDialog {
         this._appendNumberRow('Position X', 'positionX', decoration.position?.x ?? 0, VALIDATION.POSITION_MIN, VALIDATION.POSITION_MAX);
         this._appendNumberRow('Position Y', 'positionY', decoration.position?.y ?? 0, VALIDATION.POSITION_MIN, VALIDATION.POSITION_MAX);
         this._appendNumberRow('Position Z', 'positionZ', decoration.position?.z ?? 0, VALIDATION.POSITION_MIN, VALIDATION.POSITION_MAX);
-        this._appendNumberRow('Rotation X (rad)', 'rotX', decoration.rotX ?? 0, 0, 6.283185);
-        this._appendNumberRow('Rotation Y (rad)', 'rotation', decoration.rotation ?? 0, 0, 6.283185);
-        this._appendNumberRow('Rotation Z (rad)', 'rotZ', decoration.rotZ ?? 0, 0, 6.283185);
+        const angleMax = this._angleUnit === 'degrees' ? 360 : 6.283185;
+        const angleLabel = this._angleUnit === 'degrees' ? 'deg' : 'rad';
+        this._appendNumberRow(`Rotation X (${angleLabel})`, 'rotX', this._toDisplayAngle(decoration.rotX ?? 0), 0, angleMax);
+        this._appendNumberRow(`Rotation Y (${angleLabel})`, 'rotation', this._toDisplayAngle(decoration.rotation ?? 0), 0, angleMax);
+        this._appendNumberRow(`Rotation Z (${angleLabel})`, 'rotZ', this._toDisplayAngle(decoration.rotZ ?? 0), 0, angleMax);
         this._appendNumberRow('Scale', 'scale', decoration.scale ?? 1, 0.214286, 2.964286);
+    }
+
+    private _toDisplayAngle(value: number): number {
+        return this._angleUnit === 'degrees' ? Number((value * 180 / Math.PI).toFixed(6)) : value;
+    }
+
+    private _toRadians(value: number): number {
+        return this._angleUnit === 'degrees' ? value * Math.PI / 180 : value;
     }
 
     private _appendNumberRow(label: string, field: DecorationNumericField, value: number, min: number, max: number): void {
@@ -267,9 +281,9 @@ export class DecorationInfoDialog {
             layerSelection,
             updates: {
                 position: { x: value('positionX'), y: value('positionY'), z: value('positionZ') },
-                rotX: value('rotX'),
-                rotation: value('rotation'),
-                rotZ: value('rotZ'),
+                rotX: this._toRadians(value('rotX')),
+                rotation: this._toRadians(value('rotation')),
+                rotZ: this._toRadians(value('rotZ')),
                 scale: value('scale')
             }
         });

@@ -22,7 +22,8 @@ const API_KEY_PATTERN = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-
 
 let _instanceCount = 0;
 type ThemePreference = 'light' | 'dark' | 'system';
-type SettingsResult = { apiKey: string; theme: ThemePreference };
+type AngleUnit = 'degrees' | 'radians';
+type SettingsResult = { apiKey: string; theme: ThemePreference; angleUnit: AngleUnit };
 
 export class SettingsDialog {
     private _id: string;
@@ -32,6 +33,7 @@ export class SettingsDialog {
     private _currentValidationKey: string | null = null;
     private _dialogEl!: HTMLDialogElement;
     private _apiKeyInput!: HTMLInputElement;
+    private _angleUnitSelect!: HTMLSelectElement;
     private _validationIcon!: HTMLSpanElement;
     private _cancelBtn!: HTMLButtonElement;
     private _saveBtn!: HTMLButtonElement;
@@ -50,12 +52,12 @@ export class SettingsDialog {
     /**
      * Show the settings dialog pre-populated with current settings.
      *
-     * @param {{ apiKey: string, theme: string }} settings  Current settings values
+    * @param {{ apiKey: string, theme?: string, angleUnit?: AngleUnit }} settings  Current settings values
      * @returns {Promise<{ apiKey: string, theme: string } | null>}
      *   Resolves with the new settings object on Save.
      *   Resolves with null on Cancel or Escape.
      */
-    show(settings: { apiKey: string; theme?: ThemePreference }): Promise<SettingsResult | null> {
+    show(settings: { apiKey: string; theme?: ThemePreference; angleUnit?: AngleUnit }): Promise<SettingsResult | null> {
         this._apiKeyInput.value = settings.apiKey ?? '';
         // Validate the existing key immediately on open (no debounce)
         this._scheduleValidation(0);
@@ -64,6 +66,7 @@ export class SettingsDialog {
         const theme = settings.theme ?? 'system';
         const themeRadio = this._dialogEl.querySelector<HTMLInputElement>(`input[name="${this._id}-theme"][value="${theme}"]`);
         if (themeRadio) themeRadio.checked = true;
+        this._angleUnitSelect.value = settings.angleUnit === 'radians' ? 'radians' : 'degrees';
 
         if (typeof this._dialogEl.showModal === 'function') {
             this._dialogEl.showModal();
@@ -188,6 +191,28 @@ export class SettingsDialog {
         themeGroup.appendChild(themeOptions);
         formEl.appendChild(themeGroup);
 
+        const angleUnitGroup = document.createElement('div');
+        angleUnitGroup.classList.add('settings-dialog__field-group');
+
+        const angleUnitLabel = document.createElement('label');
+        angleUnitLabel.classList.add('settings-dialog__label');
+        angleUnitLabel.htmlFor = `${this._id}-angle-unit`;
+        angleUnitLabel.textContent = 'Rotation Units';
+
+        this._angleUnitSelect = document.createElement('select');
+        this._angleUnitSelect.id = `${this._id}-angle-unit`;
+        this._angleUnitSelect.classList.add('settings-dialog__input');
+        for (const [value, label] of [['degrees', 'Degrees'], ['radians', 'Radians']] as const) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            this._angleUnitSelect.appendChild(option);
+        }
+
+        angleUnitGroup.appendChild(angleUnitLabel);
+        angleUnitGroup.appendChild(this._angleUnitSelect);
+        formEl.appendChild(angleUnitGroup);
+
         const resetLayoutBtn = document.createElement('button');
         resetLayoutBtn.type = 'button';
         resetLayoutBtn.classList.add('settings-dialog__reset');
@@ -236,6 +261,7 @@ export class SettingsDialog {
             theme: selectedTheme === 'light' || selectedTheme === 'dark' || selectedTheme === 'system'
                 ? selectedTheme
                 : 'system',
+            angleUnit: this._angleUnitSelect.value === 'radians' ? 'radians' : 'degrees',
         };
         this._close(result);
     }

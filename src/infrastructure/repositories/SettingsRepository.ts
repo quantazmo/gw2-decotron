@@ -3,7 +3,7 @@
  * Persists and restores application settings to/from localStorage.
  *
  * Storage format:
- *   { "version": 1, "apiKey": "", "theme": "system" }
+ *   { "version": 1, "apiKey": "", "theme": "system", "angleUnit": "degrees" }
  *
  * Falls back to default settings on any of:
  *   - Missing key
@@ -20,11 +20,13 @@ type Theme = 'light' | 'dark' | 'system';
 interface AppSettings {
     apiKey: string;
     theme: Theme;
+    angleUnit: 'degrees' | 'radians';
 }
 
 interface SettingsInput {
     apiKey?: string | null;
     theme?: string | null;
+    angleUnit?: string | null;
 }
 
 interface StorageLike {
@@ -36,6 +38,7 @@ interface StorageLike {
 const DEFAULT_SETTINGS: Readonly<AppSettings> = Object.freeze({
     apiKey: '',
     theme: 'system',
+    angleUnit: 'degrees',
 });
 
 export class SettingsRepository {
@@ -61,6 +64,7 @@ export class SettingsRepository {
                 version: SUPPORTED_VERSION,
                 apiKey: settings.apiKey ?? '',
                 theme: settings.theme ?? 'system',
+                angleUnit: settings.angleUnit === 'radians' ? 'radians' : 'degrees',
             };
             this._storage.setItem(this._key, JSON.stringify(doc));
         } catch (err) {
@@ -90,6 +94,9 @@ export class SettingsRepository {
                 theme: typeof doc.theme === 'string' && validThemes.includes(doc.theme as Theme)
                     ? doc.theme as Theme
                     : 'system',
+                angleUnit: doc.angleUnit === 'degrees' || doc.angleUnit === 'radians'
+                    ? doc.angleUnit
+                    : 'degrees',
             };
         } catch (err) {
             console.warn('[SettingsRepository] Failed to load settings, using defaults:', err instanceof Error ? err.message : String(err));

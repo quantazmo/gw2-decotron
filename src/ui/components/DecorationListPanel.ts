@@ -31,6 +31,7 @@ class DecorationListPanel {
     private _accountInventory: AccountDecorationInventory | null;
     private _mapType: MapType | null = null;
     private _apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations' | 'getGuildUpgrades'>;
+    private _getAngleUnit: () => 'degrees' | 'radians';
     private _decorationIcons: Map<number, string> = new Map();
     private _requestedDecorationIds: Set<number> = new Set();
     private _iconCatalog: 'homestead' | 'guildHall' | null = null;
@@ -61,7 +62,7 @@ class DecorationListPanel {
     _sortHandler!: EventListener;
 
 
-    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null, apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations' | 'getGuildUpgrades'>) {
+    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null, apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations' | 'getGuildUpgrades'>, getAngleUnit: () => 'degrees' | 'radians' = () => 'degrees') {
         this.container = containerElement;
         this.appStore = appStore;
         this.selectionStore = selectionStore;
@@ -69,6 +70,7 @@ class DecorationListPanel {
         this.appService = appService || undefined;
         this._accountInventory = accountInventory;
         this._apiAdapter = apiAdapter;
+        this._getAngleUnit = getAngleUnit;
 
         this.initialize();
         this.subscribeToChanges();
@@ -715,7 +717,8 @@ class DecorationListPanel {
             decoration,
             layers: layers.map(layer => ({ id: layer.id, name: layer.name || `Layer ${layer.id}` })),
             selectedLayerId: layerId,
-            iconUrl
+            iconUrl,
+            angleUnit: this._getAngleUnit(),
         }).then(async result => {
             if (!result || !this.appService) return;
             let targetLayerId: string | undefined;
