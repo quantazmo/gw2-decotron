@@ -299,4 +299,86 @@ describe('MapViewer', () => {
             expect(clearSelection).toHaveBeenCalledOnce();
         });
     });
+
+    describe('decoration context menu', () => {
+        it('offers matching selection actions and moves only to other layers', async () => {
+            const svg = makeSvg();
+            const selectionStore = {
+                subscribe: vi.fn(),
+                isSelected: (id) => id === 'd1',
+                getSelectedIds: () => ['d1'],
+                selectDecoration: vi.fn(),
+                selectAll: vi.fn()
+            };
+            const execute = vi.fn(async command => command.type === 'CreateLayerCommand' ? { id: 'layer-new' } : undefined);
+            const appService = { execute };
+            const layer = {
+                id: 'layer-1',
+                name: 'Layer 1',
+                isVisible: true,
+                decorations: [
+                    { uid: 'd1', id: 'oak', name: 'Oak', position: { x: 10, y: 10 } },
+                    { uid: 'd2', id: 'oak', name: 'Oak', position: { x: 20, y: 20 } }
+                ]
+            };
+            const otherLayer = { id: 'layer-2', name: 'Layer 2', isVisible: true, decorations: [] };
+            let shownItems = [];
+            const layers = [layer, otherLayer];
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore({ layers }), selectionStore);
+            viewer.render({ map: makeMap(1), layers });
+            viewer.setAppService(appService);
+            viewer.setContextMenu({ show: (_x, _y, items) => { shownItems = items; } });
+
+            viewer.decorationsGroup.querySelector('[data-decoration-id="d1"]')
+                .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+
+            expect(shownItems.map(item => item.label)).toContain('Select All in Layer (2)');
+            expect(shownItems.map(item => item.label)).toContain('Select All of Same Type (2)');
+            const moveSubmenu = shownItems.find(item => item.label === 'Move to Layer').submenu;
+            expect(moveSubmenu.map(item => item.label)).toEqual(['Layer 2', 'New Layer']);
+            shownItems.find(item => item.label.startsWith('Select All in Layer')).action();
+            expect(selectionStore.selectAll).toHaveBeenCalledWith(['d1', 'd2']);
+            await moveSubmenu[1].action();
+            expect(execute.mock.calls.map(([command]) => command.type)).toEqual(['CreateLayerCommand', 'MoveDecorationsCommand']);
+            expect(execute.mock.calls[1][0].payload).toEqual({ decorationIds: ['d1'], targetLayerId: 'layer-new' });
+
+            const copySubmenu = shownItems.find(item => item.label === 'Copy to').submenu;
+            expect(copySubmenu.map(item => item.label)).toEqual(['Layer 1', 'Layer 2', 'New Layer']);
+            copySubmenu[1].action();
+            expect(execute.mock.calls.at(-1)[0]).toMatchObject({
+                type: 'CopyDecorationsCommand',
+                payload: { decorationIds: ['d1'], targetLayerId: 'layer-2' }
+            });
+            await copySubmenu[2].action();
+            expect(execute.mock.calls.at(-1)[0]).toMatchObject({
+                type: 'CopyDecorationsCommand',
+                payload: { decorationIds: ['d1'], targetLayerId: 'layer-new' }
+            });
+        });
+
+        it('keeps Move to Layer available when the clicked decoration is the only layer', () => {
+            const svg = makeSvg();
+            const selectionStore = {
+                subscribe: vi.fn(),
+                isSelected: () => true,
+                getSelectedIds: () => ['d1'],
+                selectDecoration: vi.fn(),
+                selectAll: vi.fn()
+            };
+            const layer = {
+                id: 'layer-1', name: 'Layer 1', isVisible: true,
+                decorations: [{ uid: 'd1', id: 'oak', name: 'Oak', position: { x: 10, y: 10 } }]
+            };
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore({ layers: [layer] }), selectionStore);
+            let shownItems = [];
+            viewer.render({ map: makeMap(1), layers: [layer] });
+            viewer.setAppService({ execute: vi.fn() });
+            viewer.setContextMenu({ show: (_x, _y, items) => { shownItems = items; } });
+
+            viewer.decorationsGroup.querySelector('[data-decoration-id="d1"]')
+                .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+
+            expect(shownItems.find(item => item.label === 'Move to Layer').submenu.map(item => item.label)).toEqual(['New Layer']);
+        });
+    });
 });

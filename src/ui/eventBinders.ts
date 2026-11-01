@@ -48,7 +48,7 @@ function bindCreateLayerButton(button: HTMLElement, appService: Pick<AppService,
  * @param {SelectionStore} selectionStore - The SelectionStore instance
  * @param {EventBus} eventBus - The EventBus instance
  */
-function bindDeleteLayerButton(button: HTMLElement, appService: Pick<AppService, 'execute'>, selectionStore: SelectionStore, eventBus: EventBus): void {
+function bindDeleteLayerButton(button: HTMLElement, appService: Pick<AppService, 'execute'>, selectionStore: SelectionStore, eventBus: EventBus, onDeleteLayer?: (layerId: string) => void): void {
     console.log('[eventBinders] ⚡ bindDeleteLayerButton() called');
 
     button.addEventListener('click', () => {
@@ -60,6 +60,11 @@ function bindDeleteLayerButton(button: HTMLElement, appService: Pick<AppService,
             if (!layerId) {
                 console.warn('[eventBinders] ⚠️  No layer selected');
                 eventBus.publish('WARNING', { message: 'No layer selected' });
+                return;
+            }
+
+            if (onDeleteLayer) {
+                onDeleteLayer(layerId);
                 return;
             }
 

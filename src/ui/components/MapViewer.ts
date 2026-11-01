@@ -974,8 +974,24 @@ class MapViewer {
             const count = selectedIds.length;
             const state = this.appStore.getState();
             const layers = state.layers || [];
+            const layerId = layerGroup?.getAttribute('data-layer-id');
 
-            const moveSubmenu = layers.map(l => ({
+            const clickedLayer = layers.find(layer => layer.id === layerId);
+            const layerDecorations = clickedLayer
+                ? (clickedLayer.getAllDecorations?.() ?? (clickedLayer.decorations instanceof Map
+                    ? Array.from(clickedLayer.decorations.values())
+                    : clickedLayer.decorations ?? []))
+                : [];
+            const layerDecorationIds = layerDecorations.map(decoration => decoration.uid);
+
+            const visibleDecorations = layers
+                .filter(layer => layer.isVisible)
+                .flatMap(layer => layer.getAllDecorations?.() ?? (layer.decorations instanceof Map
+                    ? Array.from(layer.decorations.values())
+                    : layer.decorations ?? []));
+            const clickedDecoration = visibleDecorations.find(decoration => decoration.uid === decorationId);
+
+            const moveSubmenu = layers.filter(layer => layer.id !== layerId).map(l => ({
                 label: l.name || `Layer ${l.id}`,
                 action: () => {
                     void appService.execute({
@@ -984,11 +1000,64 @@ class MapViewer {
                     });
                 }
             }));
+            moveSubmenu.push({
+                label: 'New Layer',
+                action: async () => {
+                    const createdLayer = await appService.execute({
+                        type: 'CreateLayerCommand',
+                        payload: { isVisible: true }
+                    }) as { id?: string } | undefined;
+                    if (createdLayer?.id) {
+                        await appService.execute({
+                            type: 'MoveDecorationsCommand',
+                            payload: { decorationIds: selectedIds, targetLayerId: createdLayer.id }
+                        });
+                    }
+                }
+            });
+            const copySubmenu = layers.map(layer => ({
+                label: layer.name || `Layer ${layer.id}`,
+                action: () => {
+                    void appService.execute({
+                        type: 'CopyDecorationsCommand',
+                        payload: { decorationIds: selectedIds, targetLayerId: layer.id }
+                    });
+                }
+            }));
+            copySubmenu.push({
+                label: 'New Layer',
+                action: async () => {
+                    const createdLayer = await appService.execute({
+                        type: 'CreateLayerCommand',
+                        payload: { isVisible: true }
+                    }) as { id?: string } | undefined;
+                    if (createdLayer?.id) {
+                        await appService.execute({
+                            type: 'CopyDecorationsCommand',
+                            payload: { decorationIds: selectedIds, targetLayerId: createdLayer.id }
+                        });
+                    }
+                }
+            });
 
             const items: Array<{ label: string; action?: () => void; submenu?: Array<{ label: string; action: () => void }> }> = [];
-            if (moveSubmenu.length > 0) {
-                items.push({ label: 'Move to Layer', submenu: moveSubmenu });
+            items.push({
+                label: `Select All in Layer (${layerDecorationIds.length})`,
+                action: () => selectionStore.selectAll(layerDecorationIds)
+            });
+            if (clickedDecoration) {
+                const sameTypeIds = visibleDecorations
+                    .filter(decoration => decoration.id === clickedDecoration.id)
+                    .map(decoration => decoration.uid);
+                if (sameTypeIds.length > 1) {
+                    items.push({
+                        label: `Select All of Same Type (${sameTypeIds.length})`,
+                        action: () => selectionStore.selectAll(sameTypeIds)
+                    });
+                }
             }
+            items.push({ label: 'Move to Layer', submenu: moveSubmenu });
+            items.push({ label: 'Copy to', submenu: copySubmenu });
             items.push({
                 label: `Delete ${count} Decoration${count > 1 ? 's' : ''}`,
                 action: () => {

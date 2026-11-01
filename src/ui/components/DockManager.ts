@@ -21,6 +21,7 @@ import type { ZoomStore } from '../stores/ZoomStore.js';
 import type { EventBus } from '../EventBus.js';
 import type { UndoRedoManager } from '../../application/UndoRedoManager.js';
 import type { ToolModeStore } from '../stores/ToolModeStore.js';
+import type { SelectionStore } from '../stores/SelectionStore.js';
 import type { DockPanelLayoutStore } from '../stores/DockPanelLayoutStore.js';
 
 /** Minimum interval (ms) between resize re-renders to avoid layout thrashing. */
@@ -42,6 +43,7 @@ export class DockManager {
     private _zoomStore: ZoomStore | null;
     private _undoRedoManager: UndoRedoManager | null;
     private _toolModeStore: ToolModeStore | null;
+    private _selectionStore: SelectionStore | null;
     private _unsubscribe: (() => void) | null;
     private _treeContainer: HTMLDivElement | null;
     private _ribbon: RibbonToolbar | null;
@@ -70,7 +72,8 @@ export class DockManager {
         appStore: AppStore | null = null,
         zoomStore: ZoomStore | null = null,
         undoRedoManager: UndoRedoManager | null = null,
-        toolModeStore: ToolModeStore | null = null
+        toolModeStore: ToolModeStore | null = null,
+        selectionStore: SelectionStore | null = null
     ) {
         this.rootElement = rootElement;
         this.layoutStore = layoutStore;
@@ -81,6 +84,7 @@ export class DockManager {
         this._zoomStore = zoomStore;
         this._undoRedoManager = undoRedoManager;
         this._toolModeStore = toolModeStore;
+        this._selectionStore = selectionStore;
         this._unsubscribe = null;
         this._treeContainer = null;
         this._ribbon = null;
@@ -106,7 +110,7 @@ export class DockManager {
         // Add RibbonToolbar above the layout tree
         if (this._appService && this._appStore && this._zoomStore) {
             const ribbon = new RibbonToolbar(
-                this._appService, this._appStore, this._zoomStore, this._eventBus, this._undoRedoManager, this._toolModeStore
+                this._appService, this._appStore, this._zoomStore, this._eventBus, this._undoRedoManager, this._toolModeStore, this._selectionStore
             );
             this._ribbon = ribbon;
             this.rootElement.insertBefore(ribbon.getElement(), this._treeContainer);

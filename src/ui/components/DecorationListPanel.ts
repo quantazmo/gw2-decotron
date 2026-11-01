@@ -607,6 +607,45 @@ class DecorationListPanel {
                     });
                 }
             }));
+        moveSubmenu.push({
+            label: 'New Layer',
+            action: async () => {
+                const createdLayer = await this.appService!.execute({
+                    type: 'CreateLayerCommand',
+                    payload: { isVisible: true }
+                }) as { id?: string } | undefined;
+                if (createdLayer?.id) {
+                    await this.appService!.execute({
+                        type: 'MoveDecorationsCommand',
+                        payload: { decorationIds: selectedIds, targetLayerId: createdLayer.id }
+                    });
+                }
+            }
+        });
+        const copySubmenu = layers.map(layer => ({
+            label: layer.name || `Layer ${layer.id}`,
+            action: () => {
+                this.appService!.execute({
+                    type: 'CopyDecorationsCommand',
+                    payload: { decorationIds: selectedIds, targetLayerId: layer.id }
+                });
+            }
+        }));
+        copySubmenu.push({
+            label: 'New Layer',
+            action: async () => {
+                const createdLayer = await this.appService!.execute({
+                    type: 'CreateLayerCommand',
+                    payload: { isVisible: true }
+                }) as { id?: string } | undefined;
+                if (createdLayer?.id) {
+                    await this.appService!.execute({
+                        type: 'CopyDecorationsCommand',
+                        payload: { decorationIds: selectedIds, targetLayerId: createdLayer.id }
+                    });
+                }
+            }
+        });
 
         // Collect decoration IDs in the same layer as the right-clicked item, respecting search filter
         const clickedLayer = layers.find(l => l.id === layerId);
@@ -649,9 +688,8 @@ class DecorationListPanel {
             }
         }
 
-        if (moveSubmenu.length > 0) {
-            items.push({ label: 'Move to Layer', submenu: moveSubmenu });
-        }
+        items.push({ label: 'Move to Layer', submenu: moveSubmenu });
+        items.push({ label: 'Copy to', submenu: copySubmenu });
         items.push({
             label: `Delete ${count} Decoration${count > 1 ? 's' : ''}`,
             action: () => {

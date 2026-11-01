@@ -30,6 +30,7 @@ import { ToggleLayerVisibilityHandler } from '../application/handlers/ToggleLaye
 import { DeleteLayerHandler } from '../application/handlers/DeleteLayerHandler.js';
 import { CreateLayerHandler } from '../application/handlers/CreateLayerHandler.js';
 import { MoveDecorationsHandler } from '../application/handlers/MoveDecorationsHandler.js';
+import { CopyDecorationsHandler } from '../application/handlers/CopyDecorationsHandler.js';
 import { MergeLayerHandler } from '../application/handlers/MergeLayerHandler.js';
 import { DeleteDecorationsHandler } from '../application/handlers/DeleteDecorationsHandler.js';
 import { ExportLayersHandler } from '../application/handlers/ExportLayersHandler.js';
@@ -92,6 +93,8 @@ interface DecorationUndoDTO {
     name: string;
     position: { x: number; y: number; z?: number; rotation?: number };
     rotation: number;
+    rotX?: number;
+    rotZ?: number;
     scale: number;
 }
 
@@ -192,6 +195,9 @@ export async function initializeApplication(): Promise<ApplicationContext> {
     // Register MoveDecorationsHandler with undoRedoManager
     console.log('[ApplicationInitializer]   ↳ Registering MoveDecorationsHandler...');
     appService.registerCommandHandler('MoveDecorationsCommand', new MoveDecorationsHandler(homesteadLayout, undoRedoManager));
+
+    // Register CopyDecorationsHandler with undo support
+    appService.registerCommandHandler('CopyDecorationsCommand', new CopyDecorationsHandler(homesteadLayout, undoRedoManager));
 
     // Register MergeLayerHandler with selectionStore and undoRedoManager
     console.log('[ApplicationInitializer]   ↳ Registering MergeLayerHandler...');
@@ -317,6 +323,31 @@ export async function initializeApplication(): Promise<ApplicationContext> {
                 const { decorationIds } = record.forwardData as { decorationIds: string[] };
                 homesteadLayout.removeDecorations(decorationIds);
                 appStoreInstance.dispatch('DELETE_DECORATIONS', { decorationIds });
+            }
+        },
+        CopyDecorationsCommand: {
+            undo(record) {
+                const { decorationIds } = record.reverseData as unknown as { decorationIds: string[] };
+                homesteadLayout.removeDecorations(decorationIds);
+                appStoreInstance.dispatch('DELETE_DECORATIONS', { decorationIds });
+            },
+            redo(record) {
+                const { targetLayerId, decorations } = record.forwardData as unknown as {
+                    targetLayerId: string;
+                    decorations: DecorationUndoDTO[];
+                };
+                for (const dto of decorations) {
+                    const position = new WorldCoordinate(
+                        dto.position.x, dto.position.y,
+                        dto.position.z || 0, dto.position.rotation || 0
+                    );
+                    const decoration = new Decoration(dto.id, dto.name, position, dto.rotation, dto.scale);
+                    if (dto.uid) decoration.uid = dto.uid;
+                    decoration.rotX = dto.rotX || 0;
+                    decoration.rotZ = dto.rotZ || 0;
+                    homesteadLayout.addDecorationToLayer(targetLayerId, decoration);
+                    appStoreInstance.dispatch('ADD_DECORATION', { layerId: targetLayerId, decoration });
+                }
             }
         },
         MergeLayerCommand: {
@@ -603,7 +634,7 @@ export async function initializeApplication(): Promise<ApplicationContext> {
         if (mapContent) panelContentMap.map = mapContent;
         if (layersContent) panelContentMap.layers = layersContent;
         if (decorationListContent) panelContentMap.decorationList = decorationListContent;
-        const dockManager = new DockManager(dockManagerRoot, layoutStore, panelContentMap, appService, eventBus, appStoreInstance, zoomStoreInstance, undoRedoManager, toolModeStore);
+        const dockManager = new DockManager(dockManagerRoot, layoutStore, panelContentMap, appService, eventBus, appStoreInstance, zoomStoreInstance, undoRedoManager, toolModeStore, selectionStore);
         dockManager.mount();
         context.dockManager = dockManager;
     } else {

@@ -236,11 +236,13 @@ describe('LayerPanel', () => {
             expect(appService._calls[0].type).toBe('ToggleLayerVisibilityCommand');
         });
 
-        it('calls deleteLayer on delete button click', () => {
+        it('calls deleteLayer on delete button click', async () => {
+            layerPanel._confirmDialog.show = vi.fn().mockResolvedValue(true);
             const layer = { id: 'layer1', name: 'Layer 1', isVisible: true };
             const el = layerPanel.createLayerElement(layer, false);
             const deleteBtn = el.querySelector('.delete-layer-btn');
             deleteBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await Promise.resolve();
             expect(appService._calls.length).toBe(1);
             expect(appService._calls[0].type).toBe('DeleteLayerCommand');
         });
@@ -469,17 +471,36 @@ describe('LayerPanel', () => {
     });
 
     describe('deleteLayer', () => {
-        it('executes DeleteLayerCommand', () => {
+        it('confirms before executing DeleteLayerCommand', async () => {
             layerPanel = new LayerPanel(container, appStore, selectionStore, appService, eventBus);
-            layerPanel.deleteLayer('layer1');
+            let confirmation;
+            layerPanel._confirmDialog.show = vi.fn(options => {
+                confirmation = options;
+                return Promise.resolve(true);
+            });
+            await layerPanel.deleteLayer('layer1');
+            expect(confirmation).toMatchObject({
+                title: 'Delete Layer',
+                message: expect.stringContaining('Layer 1'),
+                confirmLabel: 'Delete',
+                cancelLabel: 'Cancel'
+            });
             expect(appService._calls.length).toBe(1);
             expect(appService._calls[0].type).toBe('DeleteLayerCommand');
         });
 
-        it('publishes error event when execute throws', () => {
+        it('does not execute DeleteLayerCommand when deletion is cancelled', async () => {
+            layerPanel = new LayerPanel(container, appStore, selectionStore, appService, eventBus);
+            layerPanel._confirmDialog.show = vi.fn().mockResolvedValue(false);
+            await layerPanel.deleteLayer('layer1');
+            expect(appService._calls).toHaveLength(0);
+        });
+
+        it('publishes error event when execute throws', async () => {
             layerPanel = new LayerPanel(container, appStore, selectionStore, appService, eventBus);
             appService.execute = () => { throw new Error('fail'); };
-            layerPanel.deleteLayer('layer1');
+            layerPanel._confirmDialog.show = vi.fn().mockResolvedValue(true);
+            await layerPanel.deleteLayer('layer1');
             const errCall = eventBus._calls.find(c => c.event === 'ERROR');
             expect(errCall).toBeDefined();
         });

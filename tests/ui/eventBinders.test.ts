@@ -182,6 +182,20 @@ describe('eventBinders', () => {
     });
 
     describe('bindDeleteLayerButton', () => {
+        it('delegates deletion to the confirmation callback when provided', () => {
+            const btn = document.createElement('button');
+            const appService = { execute: vi.fn() };
+            const selectionStore = { getActiveLayerId: vi.fn(() => 'abc') };
+            const eventBus = { publish: vi.fn() };
+            const onDeleteLayer = vi.fn();
+
+            bindDeleteLayerButton(btn, appService, selectionStore, eventBus, onDeleteLayer);
+            btn.click();
+
+            expect(onDeleteLayer).toHaveBeenCalledWith('abc');
+            expect(appService.execute).not.toHaveBeenCalled();
+        });
+
         it('calls appService.execute with layerId on click', () => {
             const btn = document.createElement('button');
             const appService = { execute: vi.fn() };

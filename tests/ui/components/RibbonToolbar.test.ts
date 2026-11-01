@@ -57,6 +57,21 @@ function makeToolModeStore(mode = 'pan') {
     };
 }
 
+function makeSelectionStore(selectedIds = []) {
+    const listeners = [];
+    return {
+        getSelectedIds: vi.fn(() => selectedIds),
+        subscribe: vi.fn(listener => {
+            listeners.push(listener);
+            return vi.fn(() => listeners.splice(listeners.indexOf(listener), 1));
+        }),
+        setSelectedIds(ids) {
+            selectedIds = ids;
+            listeners.forEach(listener => listener({ selectedIds }));
+        }
+    };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +110,22 @@ describe('RibbonToolbar', () => {
         expect(githubLink.getAttribute('href')).toBe('https://github.com/quantazmo/gw2-deco');
         expect(githubLink.getAttribute('aria-label')).toBe('View on GitHub');
         expect(githubLink.parentElement.parentElement).toBe(groups[groups.length - 1]);
+    });
+
+    test('Delete Selected is in Edit, disabled without a selection, and requests confirmation when selected', () => {
+        const selectionStore = makeSelectionStore();
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
+        const button = toolbar.getElement().querySelector('[data-action="ribbon-delete-selected"]');
+
+        expect(button.closest('[data-group="edit"]')).not.toBeNull();
+        expect(button.disabled).toBe(true);
+
+        selectionStore.setSelectedIds(['dec-1', 'dec-2']);
+        expect(button.disabled).toBe(false);
+        button.click();
+        expect(eventBus.publish).toHaveBeenCalledWith('confirm:deleteDecorations', {
+            decorationIds: ['dec-1', 'dec-2']
+        });
     });
 
     // ─────────────────────────────────────────────────────────────────────────

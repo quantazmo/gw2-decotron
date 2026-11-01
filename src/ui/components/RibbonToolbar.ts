@@ -7,6 +7,7 @@ import { ZoomStore } from '../stores/ZoomStore.ts';
 import { EventBus } from '../EventBus.ts';
 import { UndoRedoManager } from '../../application/UndoRedoManager.ts';
 import { ToolModeStore } from '../stores/ToolModeStore.ts';
+import { SelectionStore } from '../stores/SelectionStore.ts';
 
 type RibbonWindow = Window & {
     openFileDialog?: () => void;
@@ -39,6 +40,8 @@ export class RibbonToolbar {
     private _panBtn: HTMLButtonElement | null;
     private _selectBtn: HTMLButtonElement | null;
     private _reportBtn: HTMLButtonElement | null;
+    private _deleteSelectedBtn: HTMLButtonElement | null;
+    private _selectionStore: SelectionStore | null;
     private _loadFromUrlDialog: LoadFromUrlDialog | null;
     private _craftMissingDecorationsDialog: CraftMissingDecorationsDialog | null;
     private _unsubscribers: Array<() => void>;
@@ -50,14 +53,16 @@ export class RibbonToolbar {
      * @param {object}  [eventBus]       EventBus used to subscribe to appstate:changed
      * @param {object}  [undoRedoManager] UndoRedoManager for undo/redo actions
      * @param {object}  [toolModeStore]  ToolModeStore for tool mode switching
+    * @param {object}  [selectionStore] SelectionStore for delete-selected state
      */
-    constructor(appService: AppService, appStore: AppStore | null, zoomStore: ZoomStore, eventBus: EventBus | null = null, undoRedoManager: UndoRedoManager | null = null, toolModeStore: ToolModeStore | null = null) {
+    constructor(appService: AppService, appStore: AppStore | null, zoomStore: ZoomStore, eventBus: EventBus | null = null, undoRedoManager: UndoRedoManager | null = null, toolModeStore: ToolModeStore | null = null, selectionStore: SelectionStore | null = null) {
         this._appService = appService;
         this._appStore = appStore;
         this._zoomStore = zoomStore;
         this._eventBus = eventBus;
         this._undoRedoManager = undoRedoManager;
         this._toolModeStore = toolModeStore;
+        this._selectionStore = selectionStore;
 
         this._element = null;
         this._exportBtn = null;
@@ -66,6 +71,7 @@ export class RibbonToolbar {
         this._panBtn = null;
         this._selectBtn = null;
         this._reportBtn = null;
+        this._deleteSelectedBtn = null;
         this._loadFromUrlDialog = null;
         this._craftMissingDecorationsDialog = null;
 
@@ -114,6 +120,8 @@ export class RibbonToolbar {
                 btn => { this._undoBtn = btn; }),
             this._makeBtn('Redo', 'ribbon-redo', () => this._onRedo(),
                 btn => { this._redoBtn = btn; }),
+            this._makeBtn('Delete Selected', 'ribbon-delete-selected', () => this._onDeleteSelected(),
+                btn => { this._deleteSelectedBtn = btn; }),
         ]));
 
         toolbar.appendChild(this._createGroup('Tools', [
@@ -152,6 +160,10 @@ export class RibbonToolbar {
         // Keep tool mode buttons in sync with ToolModeStore
         if (this._toolModeStore) {
             const unsub = this._toolModeStore.subscribe(() => this._updateState());
+            this._unsubscribers.push(unsub);
+        }
+        if (this._selectionStore) {
+            const unsub = this._selectionStore.subscribe(() => this._updateState());
             this._unsubscribers.push(unsub);
         }
     }
@@ -196,6 +208,7 @@ export class RibbonToolbar {
             'ribbon-fit': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
             'ribbon-undo': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
             'ribbon-redo': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>`,
+            'ribbon-delete-selected': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>`,
             'tool-pan': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>`,
             'tool-select': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" stroke-dasharray="4 2"/></svg>`,
             'ribbon-decoration-report': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
@@ -283,6 +296,9 @@ export class RibbonToolbar {
             } else {
                 this._redoBtn.title = 'Redo';
             }
+        }
+        if (this._deleteSelectedBtn) {
+            this._deleteSelectedBtn.disabled = (this._selectionStore?.getSelectedIds().length ?? 0) === 0;
         }
 
         // Sync tool mode toggle buttons
@@ -409,6 +425,13 @@ export class RibbonToolbar {
             if (this._eventBus) {
                 this._eventBus.publish('redo:requested');
             }
+        }
+    }
+
+    _onDeleteSelected(): void {
+        const decorationIds = this._selectionStore?.getSelectedIds() ?? [];
+        if (decorationIds.length > 0) {
+            this._eventBus?.publish('confirm:deleteDecorations', { decorationIds });
         }
     }
 

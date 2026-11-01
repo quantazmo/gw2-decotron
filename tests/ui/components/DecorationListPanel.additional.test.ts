@@ -190,6 +190,61 @@ describe('DecorationListPanel — additional coverage', () => {
         expect(mockContextMenu.show).toHaveBeenCalledWith(100, 200, expect.any(Array));
     });
 
+    test('decoration context menu includes selection and move actions', async () => {
+        const firstDecoration = { ...createDecoration('d1', 'Oak'), id: 'oak' };
+        const secondDecoration = { ...createDecoration('d2', 'Oak'), id: 'oak' };
+        const layers = [
+            { id: 'l1', name: 'Layer 1', isVisible: true, getAllDecorations: () => [firstDecoration, secondDecoration] },
+            { id: 'l2', name: 'Layer 2', isVisible: true, getAllDecorations: () => [] }
+        ];
+        const appStore = createMockAppStore(layers);
+        let shownItems = [];
+        const execute = vi.fn(async command => command.type === 'CreateLayerCommand' ? { id: 'l3' } : undefined);
+        const mockContextMenu = { show: (_x, _y, items) => { shownItems = items; } };
+        const panel = new DecorationListPanel(container, appStore, selectionStore, eventBus, { execute });
+        panel._contextMenu = mockContextMenu;
+
+        container.querySelector('.decoration-list__item')
+            .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+
+        expect(shownItems.map(item => item.label)).toContain('Select All in Layer (2)');
+        expect(shownItems.map(item => item.label)).toContain('Select All of Same Type (2)');
+        const moveSubmenu = shownItems.find(item => item.label === 'Move to Layer').submenu;
+        expect(moveSubmenu.map(item => item.label)).toEqual(['Layer 2', 'New Layer']);
+        await moveSubmenu[1].action();
+        expect(execute.mock.calls.map(([command]) => command.type)).toEqual(['CreateLayerCommand', 'MoveDecorationsCommand']);
+        expect(execute.mock.calls[1][0].payload).toEqual({ decorationIds: ['d1'], targetLayerId: 'l3' });
+
+        const copySubmenu = shownItems.find(item => item.label === 'Copy to').submenu;
+        expect(copySubmenu.map(item => item.label)).toEqual(['Layer 1', 'Layer 2', 'New Layer']);
+        copySubmenu[1].action();
+        expect(execute.mock.calls.at(-1)[0]).toMatchObject({
+            type: 'CopyDecorationsCommand',
+            payload: { decorationIds: ['d1'], targetLayerId: 'l2' }
+        });
+        await copySubmenu[2].action();
+        expect(execute.mock.calls.at(-1)[0]).toMatchObject({
+            type: 'CopyDecorationsCommand',
+            payload: { decorationIds: ['d1'], targetLayerId: 'l3' }
+        });
+    });
+
+    test('keeps Move to Layer available when the clicked decoration is the only layer', () => {
+        const layers = [{
+            id: 'l1', name: 'Layer 1', isVisible: true,
+            getAllDecorations: () => [createDecoration('d1', 'Oak')]
+        }];
+        const appStore = createMockAppStore(layers);
+        let shownItems = [];
+        const panel = new DecorationListPanel(container, appStore, selectionStore, eventBus, { execute: vi.fn() });
+        panel._contextMenu = { show: (_x, _y, items) => { shownItems = items; } };
+
+        container.querySelector('.decoration-list__item')
+            .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+
+        expect(shownItems.find(item => item.label === 'Move to Layer').submenu.map(item => item.label)).toEqual(['New Layer']);
+    });
+
     test('contextmenu selects item if not already selected', () => {
         const layers = [{
             id: 'l1',

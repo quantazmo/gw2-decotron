@@ -46,8 +46,8 @@ class LayerPanel {
         /** @type {ContextMenu|null} Shared context menu instance */
         this._contextMenu = null;
 
-        /** @type {ConfirmDialog} Dialog for merge confirmation */
-        this._confirmDialog = new ConfirmDialog('mergeLayer');
+        /** @type {ConfirmDialog} Shared dialog for layer confirmations */
+        this._confirmDialog = new ConfirmDialog();
 
         /** @type {DecorationLayerColorDialog} Dialog for changing layer color */
         this._colorDialog = new DecorationLayerColorDialog();
@@ -102,7 +102,8 @@ class LayerPanel {
                 this.deleteLayerBtn,
                 this.appService,
                 this.selectionStore,
-                this.eventBus
+                this.eventBus,
+                (layerId) => { void this.deleteLayer(layerId); }
             );
         } else {
             console.warn('[LayerPanel] ⚠️  delete layer button not found in DOM');
@@ -251,7 +252,7 @@ class LayerPanel {
         // Bind delete button
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.deleteLayer(layer.id);
+            this.deleteLayer(layer.id, layer);
         });
 
         // Context menu
@@ -440,14 +441,27 @@ class LayerPanel {
      * Delete a layer
      * @param {string} layerId - The layer ID to delete
      */
-    deleteLayer(layerId: string): void {
+    async deleteLayer(layerId: string, layer?: Layer): Promise<void> {
+        const targetLayer = layer ?? this.appStore.getState().layers.find(candidate => candidate.id === layerId);
+        const layerName = targetLayer?.name || `Layer ${layerId}`;
+        const decorationCount = targetLayer?.getAllDecorations?.().length ?? 0;
+        const decorationText = decorationCount === 1
+            ? '1 decoration'
+            : `${decorationCount} decorations`;
+
+        const confirmed = await this._confirmDialog.show({
+            title: 'Delete Layer',
+            message: `Delete "${layerName}" and its ${decorationText}? You can undo this action.`,
+            confirmLabel: 'Delete',
+            cancelLabel: 'Cancel'
+        });
+        if (!confirmed) return;
+
         try {
-            const command = {
+            await this.appService.execute({
                 type: 'DeleteLayerCommand',
                 payload: { layerId }
-            };
-
-            this.appService.execute(command);
+            });
         } catch (error) {
             console.error('Error deleting layer:', error);
             this.eventBus.publish('ERROR', { message: 'Failed to delete layer' });
