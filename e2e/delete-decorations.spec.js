@@ -44,6 +44,11 @@ test.describe('Delete Selected Decorations', () => {
         // Press Delete key
         await page.keyboard.press('Delete');
 
+        const dialog = page.locator('dialog.confirm-dialog[open]');
+        await expect(dialog).toBeVisible();
+        await expect(dialog.locator('.confirm-dialog__title')).toHaveText('Delete 1 Decoration?');
+        await dialog.locator('.confirm-dialog__confirm').click();
+
         // Wait for the decoration to be removed
         await expect(page.locator(`svg .decorations [data-decoration-id="${selectedId}"]`)).toHaveCount(0, { timeout: 5_000 });
 
@@ -74,6 +79,7 @@ test.describe('Delete Selected Decorations', () => {
 
         // Press Delete
         await page.keyboard.press('Delete');
+        await page.locator('dialog.confirm-dialog[open] .confirm-dialog__confirm').click();
 
         // Both should be removed
         await expect(page.locator(`svg .decorations [data-decoration-id="${id1}"]`)).toHaveCount(0, { timeout: 5_000 });
@@ -97,6 +103,7 @@ test.describe('Delete Selected Decorations', () => {
         // Select and delete a decoration
         await circles.first().evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
         await page.keyboard.press('Delete');
+        await page.locator('dialog.confirm-dialog[open] .confirm-dialog__confirm').click();
 
         // Verify deleted
         await expect(page.locator(`svg .decorations [data-decoration-id="${selectedId}"]`)).toHaveCount(0, { timeout: 5_000 });
@@ -153,6 +160,7 @@ test.describe('Delete Selected Decorations', () => {
 
         // Press Backspace
         await page.keyboard.press('Backspace');
+        await page.locator('dialog.confirm-dialog[open] .confirm-dialog__confirm').click();
 
         // Decoration should be removed
         await expect(page.locator(`svg .decorations [data-decoration-id="${selectedId}"]`)).toHaveCount(0, { timeout: 5_000 });

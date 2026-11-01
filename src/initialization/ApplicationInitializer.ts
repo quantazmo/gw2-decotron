@@ -423,10 +423,7 @@ export async function initializeApplication(): Promise<ApplicationContext> {
             const selectedIds = selectionStore.getSelectedIds();
             if (selectedIds.length > 0) {
                 e.preventDefault();
-                appService.execute({
-                    type: 'DeleteDecorationsCommand',
-                    payload: { decorationIds: selectedIds }
-                });
+                eventBus.publish('confirm:deleteDecorations', { decorationIds: selectedIds });
             }
             return;
         }
