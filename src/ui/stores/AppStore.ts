@@ -2,6 +2,13 @@ import { HomesteadLayout } from "../../domain/HomesteadLayout";
 import { Layer } from "../../domain/Layer";
 import { GW2Map } from "../../domain/GW2Map";
 import { Decoration } from "../../domain/Decoration";
+import { MapType } from "../../domain/MapType";
+import { GUILD_HALL_MAP_IDS } from "../../config/constants";
+
+function getMapType(map: GW2Map | null): MapType | null {
+    if (!map) return null;
+    return GUILD_HALL_MAP_IDS.has(map.id) ? MapType.GuildHall : MapType.Homestead;
+}
 
 class AppState {
     /** HomesteadLayout instance */
@@ -12,6 +19,8 @@ class AppState {
     activeLayerId: string | null = null;
     /** GW2Map instance */
     map: GW2Map | null = null;
+    /** Type of the currently loaded map */
+    mapType: MapType | null = null;
     /** Has unsaved changes */
     isDirty: boolean = false;
 }
@@ -92,6 +101,7 @@ class AppStore {
                 // Convert layers Map to array
                 this.state.layers = Array.from(this.state.layout.layers.values());
                 this.state.map = this.state.layout.map || null;
+                this.state.mapType = getMapType(this.state.map);
                 this.state.activeLayerId = this.state.layers.length > 0 ? this.state.layers[0].id : null;
                 this.state.isDirty = false;
                 break;
@@ -121,6 +131,7 @@ class AppStore {
                     this.state.layout = layout;
                     this.state.layers = Array.from(layout.layers.values());
                     this.state.map = layout.map || null;
+                    this.state.mapType = getMapType(this.state.map);
                     this.state.activeLayerId = this.state.layers.length > 0 ? this.state.layers[0].id : null;
                     this.state.isDirty = false;
                 }
@@ -234,6 +245,7 @@ class AppStore {
                     layers: [],
                     activeLayerId: null,
                     map: null,
+                    mapType: null,
                     isDirty: false
                 };
                 break;

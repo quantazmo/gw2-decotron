@@ -4,6 +4,7 @@
  */
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { RibbonToolbar } from '../../../src/ui/components/RibbonToolbar.js';
+import { MapType } from '../../../src/domain/MapType.js';
 
 // Mock LoadFromUrlDialog so tests don't depend on DOM dialog behaviour
 vi.mock('../../../src/ui/components/LoadFromUrlDialog.js', () => {
@@ -34,8 +35,8 @@ function makeEventBus() {
     };
 }
 
-function makeAppStore(layout = null) {
-    return { getState: vi.fn(() => ({ layout })) };
+function makeAppStore(layout = null, mapType = null) {
+    return { getState: vi.fn(() => ({ layout, mapType })) };
 }
 
 function makeUndoRedoManager({ canUndo = false, canRedo = false, undoLabel = null, redoLabel = null } = {}) {
@@ -446,6 +447,28 @@ describe('RibbonToolbar', () => {
         const layout = { id: 't1' };
         const toolbar = new RibbonToolbar(appService, makeAppStore(layout), zoomStore);
         toolbar.getElement();
+        expect(toolbar._reportBtn.disabled).toBe(false);
+    });
+
+    test('Craft Missing Decorations button is disabled for a loaded guild hall map', () => {
+        const layout = { id: 't1' };
+        const toolbar = new RibbonToolbar(appService, makeAppStore(layout, MapType.GuildHall), zoomStore);
+        toolbar.getElement();
+        expect(toolbar._reportBtn.disabled).toBe(true);
+    });
+
+    test('Craft Missing Decorations button updates when the loaded map changes', () => {
+        const layout = { id: 't1' };
+        const store = makeAppStore(layout);
+        const toolbar = new RibbonToolbar(appService, store, zoomStore, eventBus);
+        toolbar.getElement();
+
+        store.getState.mockReturnValue({ layout, mapType: MapType.GuildHall });
+        eventBus.publish('appstate:changed');
+        expect(toolbar._reportBtn.disabled).toBe(true);
+
+        store.getState.mockReturnValue({ layout, mapType: MapType.Homestead });
+        eventBus.publish('appstate:changed');
         expect(toolbar._reportBtn.disabled).toBe(false);
     });
 

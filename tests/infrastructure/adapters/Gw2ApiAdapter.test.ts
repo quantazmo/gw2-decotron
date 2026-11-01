@@ -397,4 +397,26 @@ describe('Gw2ApiAdapter', () => {
             );
         });
     });
+
+    describe('getGuildUpgrades', () => {
+        it('should fetch metadata for multiple guild upgrade IDs in one request', async () => {
+            const mockUpgrades = [{ id: 662, icon: 'https://render.guildwars2.com/icon.png' }];
+            global.fetch = vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: vi.fn().mockResolvedValue(mockUpgrades)
+            });
+
+            const adapter = new Gw2ApiAdapter();
+            const promise = adapter.getGuildUpgrades([662, 662, 950]);
+            vi.runAllTimers();
+            const result = await promise;
+
+            expect(result).toEqual(mockUpgrades);
+            expect(global.fetch).toHaveBeenCalledWith(
+                'https://api.guildwars2.com/v2/guild/upgrades?ids=662,950',
+                expect.objectContaining({ signal: expect.any(AbortSignal) })
+            );
+        });
+    });
 });

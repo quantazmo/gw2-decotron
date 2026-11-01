@@ -46,6 +46,7 @@ import { Layer } from '../domain/Layer.js';
 import { Decoration } from '../domain/Decoration.js';
 import { WorldCoordinate } from '../domain/WorldCoordinate.js';
 import { AccountDecorationInventory } from '../domain/AccountDecorationInventory.js';
+import { MapType } from '../domain/MapType.js';
 import type { UndoRecord } from '../application/UndoRecord.js';
 
 declare global {
@@ -490,6 +491,7 @@ export async function initializeApplication(): Promise<ApplicationContext> {
         const requestId = ++inventoryRequestId;
         context.accountDecorationInventory = null;
         context.decorationListPanel?.setAccountInventory(null);
+        if (appStoreInstance.getState().mapType !== MapType.Homestead) return;
         if (!apiKey) {
             const emptyInventory = new AccountDecorationInventory([]);
             context.accountDecorationInventory = emptyInventory;
@@ -511,6 +513,13 @@ export async function initializeApplication(): Promise<ApplicationContext> {
         }
         context.decorationListPanel?.setAccountInventory(context.accountDecorationInventory ?? null);
     };
+
+    let inventoryMapType = appStoreInstance.getState().mapType;
+    appStoreInstance.subscribe((state) => {
+        if (state.mapType === inventoryMapType) return;
+        inventoryMapType = state.mapType;
+        void refreshAccountDecorationInventory(settingsRepository.load().apiKey);
+    });
 
     // Load account decoration inventory on startup if an API key is set
     console.log('[ApplicationInitializer]   ↳ Loading account decoration inventory...');

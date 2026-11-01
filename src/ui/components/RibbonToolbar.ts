@@ -1,5 +1,6 @@
 import { LoadFromUrlDialog } from './LoadFromUrlDialog.js';
 import { CraftMissingDecorationsDialog } from './CraftMissingDecorationsDialog.js';
+import { MapType } from '../../domain/MapType.js';
 import { AppService } from '../../application/AppService.ts';
 import { AppStore } from '../stores/AppStore.ts';
 import { ZoomStore } from '../stores/ZoomStore.ts';
@@ -254,9 +255,9 @@ export class RibbonToolbar {
     // ── state ───────────────────────────────────────────────────────────────
 
     _updateState(): void {
-        const hasLayout = this._appStore
-            ? !!this._appStore.getState().layout
-            : false;
+        const state = this._appStore?.getState();
+        const hasLayout = !!state?.layout;
+        const isGuildHall = state?.mapType === MapType.GuildHall;
 
         if (this._exportBtn) {
             this._exportBtn.disabled = !hasLayout;
@@ -293,7 +294,7 @@ export class RibbonToolbar {
             this._selectBtn.setAttribute('aria-pressed', currentMode === 'select' ? 'true' : 'false');
         }
         if (this._reportBtn) {
-            this._reportBtn.disabled = !hasLayout;
+            this._reportBtn.disabled = !hasLayout || isGuildHall;
         }
     }
 

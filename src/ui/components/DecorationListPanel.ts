@@ -8,6 +8,7 @@
 
 import AppService from '../../application/AppService.js';
 import { Decoration } from '../../domain/Decoration.js';
+import { MapType } from '../../domain/MapType.js';
 import { AccountDecorationInventory } from '../../domain/AccountDecorationInventory.js';
 import { Layer } from '../../domain/Layer.js';
 import type { Gw2ApiAdapter } from '../../infrastructure/adapters/Gw2ApiAdapter.js';
@@ -28,9 +29,11 @@ class DecorationListPanel {
     eventBus: EventBus;
     appService?: AppService;
     private _accountInventory: AccountDecorationInventory | null;
-    private _apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations'>;
+    private _mapType: MapType | null = null;
+    private _apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations' | 'getGuildUpgrades'>;
     private _decorationIcons: Map<number, string> = new Map();
     private _requestedDecorationIds: Set<number> = new Set();
+    private _iconCatalog: 'homestead' | 'guildHall' | null = null;
 
     /** Anchor decoration ID for Shift+Click range */
     _anchorId?: string;
@@ -58,7 +61,7 @@ class DecorationListPanel {
     _sortHandler!: EventListener;
 
 
-    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null, apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations'>) {
+    constructor(containerElement: HTMLElement, appStore: AppStore, selectionStore: SelectionStore, eventBus: EventBus, appService?: AppService, accountInventory: AccountDecorationInventory | null = null, apiAdapter?: Pick<Gw2ApiAdapter, 'getHomesteadDecorations' | 'getGuildUpgrades'>) {
         this.container = containerElement;
         this.appStore = appStore;
         this.selectionStore = selectionStore;
@@ -110,6 +113,7 @@ class DecorationListPanel {
      * @param {Object} state - AppStore state with layers array
      */
     render(state: AppState): void {
+        this._mapType = state.mapType ?? null;
         empty(this._listContainer!);
         this._orderedIds = [];
 
@@ -129,7 +133,7 @@ class DecorationListPanel {
             }
         }
 
-        this._loadDecorationIcons(visibleDecorations);
+        this._loadDecorationIcons(visibleDecorations, state.mapType);
 
         for (const layer of layers) {
             if (!layer.isVisible) continue;
@@ -330,7 +334,7 @@ class DecorationListPanel {
 
         const decorationId = Number(decoration.id);
         const requiredCount = requiredCounts.get(decorationId) ?? 0;
-        if (this._accountInventory && this._accountInventory.getCount(decorationId) >= requiredCount) {
+        if (this._mapType !== MapType.GuildHall && this._accountInventory && this._accountInventory.getCount(decorationId) >= requiredCount) {
             createElement('span', {
                 className: 'decoration-list__availability-check',
                 textContent: '✓',
@@ -366,8 +370,17 @@ class DecorationListPanel {
         return item;
     }
 
-    private _loadDecorationIcons(decorations: Decoration[]): void {
+    private _loadDecorationIcons(decorations: Decoration[], mapType: MapType | null): void {
         if (!this._apiAdapter) return;
+
+        const catalog = mapType === MapType.GuildHall
+            ? 'guildHall'
+            : 'homestead';
+        if (catalog !== this._iconCatalog) {
+            this._iconCatalog = catalog;
+            this._decorationIcons.clear();
+            this._requestedDecorationIds.clear();
+        }
 
         const ids = [...new Set(decorations
             .map(decoration => Number(decoration.id))
@@ -375,13 +388,19 @@ class DecorationListPanel {
         if (ids.length === 0) return;
 
         ids.forEach(id => this._requestedDecorationIds.add(id));
-        void this._apiAdapter.getHomesteadDecorations(ids, 'en').then(results => {
+        const loadIcons = catalog === 'guildHall'
+            ? this._apiAdapter.getGuildUpgrades(ids)
+            : this._apiAdapter.getHomesteadDecorations(ids, 'en');
+        void loadIcons.then(results => {
+            if (catalog !== this._iconCatalog) return;
             for (const decoration of results ?? []) {
                 if (decoration.icon) this._decorationIcons.set(decoration.id, decoration.icon);
             }
             this.render(this.appStore.getState());
         }).catch(() => {
-            ids.forEach(id => this._requestedDecorationIds.delete(id));
+            if (catalog === this._iconCatalog) {
+                ids.forEach(id => this._requestedDecorationIds.delete(id));
+            }
         });
     }
 

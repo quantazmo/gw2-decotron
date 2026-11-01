@@ -41,7 +41,6 @@ export const UI_LAYOUT = {
 // ==============================================================================
 // ZOOM & SCALE CONFIGURATION
 // ==============================================================================
-
 export const ZOOM = {
     // Zoom level constraints
     MIN_LEVEL: 1.0,      // Minimum zoom (no zoom out past default/reset view)
@@ -64,8 +63,6 @@ export const ZOOM = {
 
 // ==============================================================================
 // MAP & COORDINATE CONFIGURATION
-// ==============================================================================
-
 export const MAP = {
     // Tile system
     TILE_SIZE: 256, // Standard GW2 tile size in pixels
@@ -89,6 +86,7 @@ export const MAP = {
 // These colors are chosen to stand out against the earthy GW2 homestead map
 // while remaining visually distinct from each other.
 // ==============================================================================
+export const GUILD_HALL_MAP_IDS: ReadonlySet<number> = new Set([1121, 1124, 1232, 1462]);
 
 export const LAYER_COLORS: readonly string[] = [
     '#ff44cc', // pink

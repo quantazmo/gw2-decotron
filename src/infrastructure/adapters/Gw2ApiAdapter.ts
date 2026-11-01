@@ -31,6 +31,11 @@ export interface Gw2ApiHomesteadDecoration {
     icon?: string;
 }
 
+export interface Gw2ApiGuildUpgrade {
+    id: number;
+    icon?: string;
+}
+
 export interface Gw2ApiFloorMapData {
     continent_rect: Gw2CoordinateRect;
     map_rect: Gw2CoordinateRect;
@@ -127,6 +132,19 @@ export class Gw2ApiAdapter {
 
         return this._callWithRetry<Gw2ApiHomesteadDecoration[]>(
             `v2/homestead/decorations?ids=${uniqueIds.join(',')}&lang=${encodeURIComponent(lang)}`
+        );
+    }
+
+    /**
+     * Get public metadata for guild hall decorations.
+     * @param {number[]} ids - Guild upgrade IDs to fetch
+     */
+    async getGuildUpgrades(ids: number[]): Promise<Gw2ApiGuildUpgrade[] | null> {
+        const uniqueIds = [...new Set(ids.filter(Number.isSafeInteger))];
+        if (uniqueIds.length === 0) return [];
+
+        return this._callWithRetry<Gw2ApiGuildUpgrade[]>(
+            `v2/guild/upgrades?ids=${uniqueIds.join(',')}`
         );
     }
 

@@ -8,16 +8,17 @@ import { SelectionStore } from '../../../src/ui/stores/SelectionStore.ts';
 import { EventBus } from '../../../src/ui/EventBus.ts';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Decoration } from '../../../src/domain/Decoration.ts';
+import { MapType } from '../../../src/domain/MapType.ts';
 import { AccountDecorationInventory } from '../../../src/domain/AccountDecorationInventory.js';
 import { Layer } from '../../../src/domain/Layer.ts';
 import { AppState, AppStore } from '../../../src/ui/stores/AppStore.js';
 import ContextMenu from '../../../src/ui/components/ContextMenu.ts';
 import AppService from '../../../src/application/AppService.ts';
 
-function createMockAppStore(layers: Layer[] = []): AppStore {
+function createMockAppStore(layers: Layer[] = [], mapType: MapType | null = null): AppStore {
     const listeners: Array<(state: AppState) => void> = [];
     return {
-        getState: () => ({ layers } as AppState),
+        getState: () => ({ layers, mapType } as AppState),
         listeners: listeners,
         subscribe: (fn: (state: AppState) => void) => {
             listeners.push(fn);
@@ -65,7 +66,8 @@ describe('DecorationListPanel', () => {
         test('should display API icons before decoration names using one batched lookup', async () => {
             const iconUrl = 'https://render.guildwars2.com/icon.png';
             const apiAdapter = {
-                getHomesteadDecorations: vi.fn().mockResolvedValue([{ id: 327, name: 'Kodan Dining Chair', icon: iconUrl }])
+                getHomesteadDecorations: vi.fn().mockResolvedValue([{ id: 327, name: 'Kodan Dining Chair', icon: iconUrl }]),
+                getGuildUpgrades: vi.fn()
             };
             const layers = [createLayer('l1', 'Layer 1', [createDecoration('327', 'Kodan Dining Chair')])];
             appStore = createMockAppStore(layers);
@@ -80,6 +82,26 @@ describe('DecorationListPanel', () => {
             expect(item.querySelector('.decoration-list__item-icon-slot')?.nextElementSibling?.classList.contains('decoration-list__item-name')).toBe(true);
             expect(apiAdapter.getHomesteadDecorations).toHaveBeenCalledOnce();
             expect(apiAdapter.getHomesteadDecorations).toHaveBeenCalledWith([327], 'en');
+        });
+
+        test('should use guild upgrade icons for a loaded guild hall map', async () => {
+            const iconUrl = 'https://render.guildwars2.com/guild-icon.png';
+            const apiAdapter = {
+                getHomesteadDecorations: vi.fn(),
+                getGuildUpgrades: vi.fn().mockResolvedValue([{ id: 1174, icon: iconUrl }])
+            };
+            const layers = [createLayer('l1', 'Layer 1', [createDecoration('1174', 'Ice Sheet')])];
+            appStore = createMockAppStore(layers, MapType.GuildHall);
+
+            new DecorationListPanel(container, appStore, selectionStore, eventBus, undefined, null, apiAdapter);
+
+            await vi.waitFor(() => {
+                expect(container.querySelector('.decoration-list__item-icon')?.getAttribute('src')).toBe(iconUrl);
+            });
+
+            expect(apiAdapter.getGuildUpgrades).toHaveBeenCalledOnce();
+            expect(apiAdapter.getGuildUpgrades).toHaveBeenCalledWith([1174]);
+            expect(apiAdapter.getHomesteadDecorations).not.toHaveBeenCalled();
         });
 
         test('should render decorations from visible layers grouped by layer', () => {
@@ -164,6 +186,15 @@ describe('DecorationListPanel', () => {
             expect(container.querySelectorAll('.decoration-list__availability-check').length).toBe(2);
 
             panel.setAccountInventory(new AccountDecorationInventory([{ id: 35, count: 1 }]));
+            expect(container.querySelectorAll('.decoration-list__availability-check').length).toBe(0);
+        });
+
+        test('does not show account inventory checks on guild hall maps', () => {
+            const layers = [createLayer('l1', 'Layer 1', [createDecoration('35', 'Oak Tree')])];
+            appStore = createMockAppStore(layers, MapType.GuildHall);
+            const panel = new DecorationListPanel(container, appStore, selectionStore, eventBus);
+            panel.setAccountInventory(new AccountDecorationInventory([{ id: 35, count: 1 }]));
+
             expect(container.querySelectorAll('.decoration-list__availability-check').length).toBe(0);
         });
     });

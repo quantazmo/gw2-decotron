@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import { AppState, AppStore } from '../../../src/ui/stores/AppStore.js';
 import { Decoration } from '../../../src/domain/Decoration.js';
 import { Layer } from '../../../src/domain/Layer.js';
+import { MapType } from '../../../src/domain/MapType.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ describe('AppStore – constructor', () => {
         expect(state.layers).toEqual([]);
         expect(state.activeLayerId).toBeNull();
         expect(state.map).toBeNull();
+        expect(state.mapType).toBeNull();
         expect(state.isDirty).toBe(false);
     });
 
@@ -107,6 +109,22 @@ describe('AppStore – LOAD_LAYOUT dispatch', () => {
 
         store.dispatch('LOAD_LAYOUT', layout);
         expect(store.getState().map).toBe(fakeMap);
+    });
+
+    test('sets mapType to GuildHall when loading a guild hall map', () => {
+        const store = new AppStore();
+        const layout = { ...makeLayout(), map: { id: 1121 } };
+
+        store.dispatch('LOAD_LAYOUT', layout);
+        expect(store.getState().mapType).toBe(MapType.GuildHall);
+    });
+
+    test('sets mapType to Homestead when loading a homestead map', () => {
+        const store = new AppStore();
+        const layout = { ...makeLayout(), map: { id: 1558 } };
+
+        store.dispatch('LOAD_LAYOUT', layout);
+        expect(store.getState().mapType).toBe(MapType.Homestead);
     });
 
     test('handles layout with no layers – activeLayerId is null', () => {
@@ -178,13 +196,14 @@ describe('AppStore – MAP_SWITCHED dispatch', () => {
         store.dispatch('LOAD_LAYOUT', makeLayout([layer1]));
 
         const newLayer = makeLayer('l2');
-        const newLayout = makeLayout([newLayer]);
+        const newLayout = { ...makeLayout([newLayer]), map: { id: 1121 } };
         store.dispatch('MAP_SWITCHED', { layout: newLayout });
 
         const state = store.getState();
         expect(state.layers).toHaveLength(1);
         expect(state.activeLayerId).toBe('l2');
         expect(state.isDirty).toBe(false);
+        expect(state.mapType).toBe(MapType.GuildHall);
     });
 
     test('handles null payload gracefully', () => {
@@ -431,6 +450,7 @@ describe('AppStore – RESET dispatch', () => {
         expect(state.layers).toHaveLength(0);
         expect(state.activeLayerId).toBeNull();
         expect(state.map).toBeNull();
+        expect(state.mapType).toBeNull();
         expect(state.isDirty).toBe(false);
     });
 });
