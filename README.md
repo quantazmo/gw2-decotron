@@ -1,10 +1,10 @@
-# Guild Wars 2 Decoration Editor
+# Decotron 2000 - Guild Wars 2 Decoration Editor
 
-[![Deploy to GitHub Pages](https://github.com/quantazmo/gw2-deco/actions/workflows/publish.yaml/badge.svg)](https://github.com/quantazmo/gw2-deco/actions/workflows/publish.yaml)
-[![Unit Tests](https://github.com/quantazmo/gw2-deco/actions/workflows/unit-tests.yaml/badge.svg)](https://github.com/quantazmo/gw2-deco/actions/workflows/unit-tests.yaml)
-[![Playwright Tests](https://github.com/quantazmo/gw2-deco/actions/workflows/playwright-tests.yaml/badge.svg)](https://github.com/quantazmo/gw2-deco/actions/workflows/playwright-tests.yaml)
+[![Deploy to GitHub Pages](https://github.com/quantazmo/gw2-decotron/actions/workflows/publish.yaml/badge.svg)](https://github.com/quantazmo/gw2-decotron/actions/workflows/publish.yaml)
+[![Unit Tests](https://github.com/quantazmo/gw2-decotron/actions/workflows/unit-tests.yaml/badge.svg)](https://github.com/quantazmo/gw2-decotron/actions/workflows/unit-tests.yaml)
+[![Playwright Tests](https://github.com/quantazmo/gw2-decotron/actions/workflows/playwright-tests.yaml/badge.svg)](https://github.com/quantazmo/gw2-decotron/actions/workflows/playwright-tests.yaml)
 
-https://quantazmo.github.io/gw2-deco/
+https://quantazmo.github.io/gw2-decotron/
 
 This website is a browser-based tool for loading, editing, and exporting homestead and guild hall decoration layouts for the Guild Wars 2 video game.
 

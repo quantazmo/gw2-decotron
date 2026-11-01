@@ -1,11 +1,11 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/typescript-node
 {
-    "name": "gw2-deco",
+    "name": "gw2-decotron",
     // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
     "image": "mcr.microsoft.com/devcontainers/typescript-node:5-24-trixie",
     "mounts": [
-        "source=/var/www/gw2-deco,target=/var/www/gw2-deco,type=bind"
+        "source=/var/www/gw2-decotron,target=/var/www/gw2-decotron,type=bind"
     ],
     // Features to add to the dev container. More info: https://containers.dev/features.
     // "features": {},
