@@ -2449,6 +2449,15 @@ button:active {
   pointer-events: none;
 }
 
+.selection-lasso {
+  fill: rgba(74, 144, 217, 0.2);
+  stroke: #4a90d9;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
 /* ── Selection Shortcut Hint ───────────────────────────────────────── */
 .selection-shortcut-hint {
   position: absolute;

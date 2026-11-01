@@ -331,6 +331,13 @@ describe('RibbonToolbar', () => {
         expect(toolModeStore.setMode).toHaveBeenCalledWith('select');
     });
 
+    test('Lasso Select button calls toolModeStore.setMode("lasso")', () => {
+        const toolModeStore = makeToolModeStore('pan');
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, null, null, toolModeStore);
+        toolbar.getElement().querySelector('[data-action="tool-lasso"]').click();
+        expect(toolModeStore.setMode).toHaveBeenCalledWith('lasso');
+    });
+
     // ─────────────────────────────────────────────────────────────────────────
     // Settings button
     // ─────────────────────────────────────────────────────────────────────────

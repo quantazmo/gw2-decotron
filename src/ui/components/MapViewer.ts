@@ -8,6 +8,7 @@
 import * as renderHelpers from '../renderHelpers.js';
 import * as domHelpers from '../domHelpers.js';
 import { SelectionRectangle } from './SelectionRectangle.js';
+import { SelectionLasso } from './SelectionLasso.js';
 import type { GW2Map } from '../../domain/GW2Map.js';
 import type { Layer } from '../../domain/Layer.js';
 import type { Decoration } from '../../domain/Decoration.js';
@@ -93,6 +94,7 @@ class MapViewer {
     private _contextMenu: ContextMenuLike | null;
     private _toolModeStore: ToolModeStoreLike | null;
     private _selectionRect: SelectionRectangle | null;
+    private _selectionLasso: SelectionLasso | null = null;
     private _containerGroup: SVGGElement | null;
     private _selectionIndicator: HTMLDivElement | null = null;
     private _selectionShortcutHint: HTMLDivElement | null = null;
@@ -641,11 +643,11 @@ class MapViewer {
     }
 
     /**
-     * Bind capture-phase mousedown + pointermove/pointerup handlers for
-     * rectangle selection in 'select' mode.
+    * Bind capture-phase mousedown + pointermove/pointerup handlers for
+    * rectangular and lasso selection modes.
      *
      * In 'pan' mode:  nothing extra happens; ZoomHandler takes over.
-     * In 'select' mode when clicking on empty SVG area:
+    * In either selection mode when clicking on empty SVG area:
      *   - mousedown (capture) blocks ZoomHandler's pan via stopImmediatePropagation
      *   - pointermove draws the selection rectangle
      *   - pointerup finalises, determines enclosed decorations and selects them
@@ -658,9 +660,9 @@ class MapViewer {
         // Capture-phase mousedown: intercepted before ZoomHandler's bubble listener.
         this.svgElement.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
-            if (!this._toolModeStore || !this._selectionRect) return;
-            const selectionRect = this._selectionRect;
-            if (this._toolModeStore.getMode() !== 'select') return;
+            if (!this._toolModeStore || !this._selectionRect || !this._selectionLasso) return;
+            const mode = this._toolModeStore.getMode();
+            if (mode !== 'select' && mode !== 'lasso') return;
 
             const target = e.target instanceof Element ? e.target : null;
             const circle = target?.closest('[data-decoration-id]') ?? null;
@@ -673,13 +675,21 @@ class MapViewer {
             rectInProgress = true;
 
             const svgCoords = this._getSVGCoords(e);
-            selectionRect.start(svgCoords.x, svgCoords.y);
+            if (mode === 'select') {
+                this._selectionRect.start(svgCoords.x, svgCoords.y);
+            } else {
+                this._selectionLasso.start(svgCoords.x, svgCoords.y);
+            }
 
             const onMove = (me: MouseEvent) => {
                 if (!rectInProgress) return;
                 hasMoved = true;
                 const coords = this._getSVGCoords(me);
-                selectionRect.update(coords.x, coords.y);
+                if (mode === 'select') {
+                    this._selectionRect?.update(coords.x, coords.y);
+                } else {
+                    this._selectionLasso?.update(coords.x, coords.y);
+                }
             };
 
             const onUp = (me: MouseEvent) => {
@@ -688,27 +698,33 @@ class MapViewer {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
 
-                const bounds = selectionRect.finish();
+                const bounds = mode === 'select' ? this._selectionRect?.finish() : null;
+                const polygon = mode === 'lasso' ? this._selectionLasso?.finish() : null;
 
                 const selectionStore = this.selectionStore;
                 if (!selectionStore) return;
 
+                let ids: string[] | null = null;
                 if (hasMoved && bounds && (bounds.width > 2 || bounds.height > 2)) {
-                    // Select decorations within the rectangle.
-                    // bounds are in SVG root coordinates (_getSVGCoords uses svgElement.getScreenCTM).
-                    // Decoration cx/cy attributes are in the container group's local coordinate
-                    // space (offset by the group's translate transform, e.g. translate(10,10)).
-                    // Subtract the group offset so both are in the same coordinate system.
+                    // Convert the SVG-root selection bounds to decoration-group coordinates.
                     const groupOffset = this._getContainerGroupOffset();
-                    const groupBounds = {
+                    ids = this._selectionRect!.getDecorationsInBounds({
                         x: bounds.x - groupOffset.x,
                         y: bounds.y - groupOffset.y,
                         width: bounds.width,
                         height: bounds.height
-                    };
-                    const ids = selectionRect.getDecorationsInBounds(
-                        groupBounds, this.decorationCircles
-                    );
+                    }, this.decorationCircles);
+                } else if (hasMoved && polygon && polygon.length >= 3) {
+                    // Decoration coordinates are local to the translated container group.
+                    const groupOffset = this._getContainerGroupOffset();
+                    const groupPolygon = polygon.map(point => ({
+                        x: point.x - groupOffset.x,
+                        y: point.y - groupOffset.y
+                    }));
+                    ids = this._selectionLasso!.getDecorationsInPolygon(groupPolygon, this.decorationCircles);
+                }
+
+                if (ids) {
                     // Filter to only visible-layer decorations
                     const visibleIds = ids.filter(id => {
                         const circle = this.decorationCircles.get(id);
@@ -817,6 +833,7 @@ class MapViewer {
     setToolModeStore(toolModeStore: ToolModeStoreLike): void {
         this._toolModeStore = toolModeStore;
         this._selectionRect = new SelectionRectangle(this.svgElement);
+        this._selectionLasso = new SelectionLasso(this.svgElement);
 
         const shortcutHint = document.createElement('div');
         shortcutHint.className = 'selection-shortcut-hint';
@@ -833,9 +850,10 @@ class MapViewer {
         this._selectionShortcutHint = shortcutHint;
 
         const updateToolMode = (mode: string) => {
-            this.svgElement.style.cursor = mode === 'select' ? 'crosshair' : 'grab';
+            const selectionMode = mode === 'select' || mode === 'lasso';
+            this.svgElement.style.cursor = selectionMode ? 'crosshair' : 'grab';
             if (this._selectionShortcutHint) {
-                this._selectionShortcutHint.hidden = mode !== 'select';
+                this._selectionShortcutHint.hidden = !selectionMode;
             }
             this._updateSelectionIndicator();
         };
@@ -897,7 +915,8 @@ class MapViewer {
         const el = this._selectionIndicator;
         if (!el) return;
 
-        const inSelectMode = this._toolModeStore && this._toolModeStore.getMode() === 'select';
+        const mode = this._toolModeStore?.getMode();
+        const inSelectMode = mode === 'select' || mode === 'lasso';
         if (!inSelectMode) {
             el.style.display = 'none';
             return;

@@ -198,6 +198,10 @@ describe('MapViewer', () => {
             mode = 'select';
             listeners.forEach(listener => listener(mode));
             expect(hint.hidden).toBe(false);
+
+            mode = 'lasso';
+            listeners.forEach(listener => listener(mode));
+            expect(hint.hidden).toBe(false);
         });
     });
 

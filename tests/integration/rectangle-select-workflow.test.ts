@@ -7,6 +7,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { ToolModeStore } from '../../src/ui/stores/ToolModeStore.js';
 import { SelectionStore } from '../../src/ui/stores/SelectionStore.js';
 import { SelectionRectangle } from '../../src/ui/components/SelectionRectangle.js';
+import { SelectionLasso } from '../../src/ui/components/SelectionLasso.js';
 import { EventBus } from '../../src/ui/EventBus.js';
 
 // Build a map of decoration circles at known screen positions
@@ -28,6 +29,7 @@ describe('Rectangle Selection Workflow Integration Tests', () => {
     let eventBus;
     let svg;
     let selectionRect;
+    let selectionLasso;
     let circleMap;
 
     beforeEach(() => {
@@ -39,6 +41,7 @@ describe('Rectangle Selection Workflow Integration Tests', () => {
         svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         document.body.appendChild(svg);
         selectionRect = new SelectionRectangle(svg);
+        selectionLasso = new SelectionLasso(svg);
 
         circleMap = buildCircleMap([
             ['d1', 50, 50],
@@ -93,6 +96,38 @@ describe('Rectangle Selection Workflow Integration Tests', () => {
             }
 
             expect(selectionStore.getSelectionCount()).toBe(4);
+        });
+    });
+
+    describe('draw lasso to select', () => {
+        test('selects decorations inside a freeform polygon', () => {
+            toolModeStore.setMode('lasso');
+
+            selectionLasso.start(0, 0);
+            selectionLasso.update(130, 0);
+            selectionLasso.update(130, 130);
+            selectionLasso.update(0, 130);
+            const polygon = selectionLasso.finish();
+
+            const ids = selectionLasso.getDecorationsInPolygon(polygon, circleMap);
+            selectionStore.selectAll(ids);
+
+            expect(selectionStore.isSelected('d1')).toBe(true);
+            expect(selectionStore.isSelected('d4')).toBe(true);
+            expect(selectionStore.isSelected('d2')).toBe(false);
+            expect(selectionStore.isSelected('d3')).toBe(false);
+        });
+
+        test('respects a concave lasso boundary', () => {
+            selectionLasso.start(0, 0);
+            selectionLasso.update(200, 0);
+            selectionLasso.update(200, 50);
+            selectionLasso.update(50, 50);
+            selectionLasso.update(50, 200);
+            selectionLasso.update(0, 200);
+            const polygon = selectionLasso.finish();
+
+            expect(selectionLasso.getDecorationsInPolygon(polygon, circleMap)).toEqual(['d1']);
         });
     });
 
