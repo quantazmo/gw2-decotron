@@ -15,7 +15,7 @@ describe('SettingsRepository — error path coverage', () => {
             const throwingStorage = {
                 setItem: () => { throw new Error('QuotaExceededError'); },
                 getItem: () => null,
-                removeItem: () => {}
+                removeItem: () => { }
             };
             const repo = new SettingsRepository(throwingStorage);
             expect(() => repo.save({ apiKey: 'key' })).not.toThrow();
@@ -28,7 +28,7 @@ describe('SettingsRepository — error path coverage', () => {
     describe('clear – storage throws', () => {
         test('degrades gracefully when removeItem throws', () => {
             const throwingStorage = {
-                setItem: () => {},
+                setItem: () => { },
                 getItem: () => null,
                 removeItem: () => { throw new Error('SecurityError'); }
             };
@@ -43,13 +43,13 @@ describe('SettingsRepository — error path coverage', () => {
     describe('load – storage getItem throws', () => {
         test('returns default settings when getItem throws', () => {
             const throwingStorage = {
-                setItem: () => {},
+                setItem: () => { },
                 getItem: () => { throw new Error('SecurityError'); },
-                removeItem: () => {}
+                removeItem: () => { }
             };
             const repo = new SettingsRepository(throwingStorage);
             const result = repo.load();
-            expect(result).toEqual({ apiKey: '', theme: 'system' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
         });
     });
 });

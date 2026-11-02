@@ -7,6 +7,14 @@
     "mounts": [
         "source=/var/www/gw2-decotron,target=/var/www/gw2-decotron,type=bind"
     ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-playwright.playwright",
+                "vitest.explorer"
+            ]
+        }
+    },
     // Features to add to the dev container. More info: https://containers.dev/features.
     // "features": {},
     // Use 'forwardPorts' to make a list of ports inside the container available locally.
