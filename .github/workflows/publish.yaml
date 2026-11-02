@@ -7,6 +7,7 @@ on:
       - '.github/workflows/publish.yaml'
       - 'src/**'
       - 'tests/**'
+      - 'e2e/**'
       - 'public/**'
       - 'homestead.xml'
       - 'index.html'
@@ -14,6 +15,7 @@ on:
       - 'style.css'
       - 'package.json'
       - 'package-lock.json'
+      - 'playwright.config.js'
       - 'tsconfig.json'
       - 'vite.config.ts'
       - 'vitest.config.ts'
@@ -48,6 +50,12 @@ jobs:
 
       - name: Run Tests
         run: npm test
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright Tests
+        run: npx playwright test
 
       - name: Build Project
         run: npm run build:prod
