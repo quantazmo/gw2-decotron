@@ -95,12 +95,71 @@ test.describe('Move Decorations', () => {
         await circles.first().click({ button: 'right', force: true });
 
         // Hover over "Move to Layer" to open submenu
-        const moveItem = page.locator('.context-menu .has-submenu');
+        const moveItem = page.locator('.context-menu:not(.context-menu--submenu) [role="menuitem"].has-submenu', { hasText: 'Move to Layer' });
         await moveItem.hover();
 
         // Submenu should appear
         const submenu = page.locator('.context-menu--submenu');
         await expect(submenu).toBeVisible({ timeout: 3_000 });
+    });
+
+    test('map context menu copies a decoration to an existing layer', async ({ page }) => {
+        await loadTwoLayers(page);
+
+        const layers = page.locator('#layers-list .layer-item');
+        const targetLayer = layers.nth(1);
+        const targetLayerId = await targetLayer.getAttribute('data-layer-id');
+        const targetLayerName = await targetLayer.locator('.layer-name').textContent();
+        const source = page.locator('#map-container svg .decorations [data-decoration-id]').first();
+        const sourceId = await source.getAttribute('data-decoration-id');
+        expect(sourceId).toBeTruthy();
+
+        const targetDecorations = page.locator(
+            `#map-container svg .decorations [data-layer-id="${targetLayerId}"] [data-decoration-id]`
+        );
+        const targetCountBefore = await targetDecorations.count();
+
+        await source.click({ button: 'right', force: true });
+        const contextMenu = page.locator('.context-menu:not(.context-menu--submenu)');
+        await expect(contextMenu).toBeVisible({ timeout: 3_000 });
+        await contextMenu.getByRole('menuitem', { name: 'Copy to' }).hover();
+
+        const submenu = page.locator('.context-menu--submenu');
+        await expect(submenu).toBeVisible({ timeout: 3_000 });
+        await submenu.getByRole('menuitem', { name: targetLayerName.trim(), exact: true }).click();
+
+        await expect(targetDecorations).toHaveCount(targetCountBefore + 1, { timeout: 5_000 });
+        await expect(page.locator(`#map-container svg .decorations [data-decoration-id="${sourceId}"]`))
+            .toHaveCount(1);
+    });
+
+    test('decoration-list context menu copies to a new layer', async ({ page }) => {
+        await loadTwoLayers(page);
+
+        const layers = page.locator('#layers-list .layer-item');
+        const layerCountBefore = await layers.count();
+        const source = page.locator('.decoration-list__item').first();
+        await expect(source).toBeVisible();
+        const sourceId = await source.getAttribute('data-decoration-id');
+
+        await source.click({ button: 'right' });
+        const contextMenu = page.locator('.context-menu:not(.context-menu--submenu)');
+        await expect(contextMenu).toBeVisible({ timeout: 3_000 });
+        await contextMenu.getByRole('menuitem', { name: 'Copy to' }).hover();
+
+        const submenu = page.locator('.context-menu--submenu');
+        await expect(submenu).toBeVisible({ timeout: 3_000 });
+        await submenu.getByRole('menuitem', { name: 'New Layer', exact: true }).click();
+
+        await expect(layers).toHaveCount(layerCountBefore + 1, { timeout: 5_000 });
+        const newLayerId = await layers.last().getAttribute('data-layer-id');
+        const copiedDecorations = page.locator(
+            `#map-container svg .decorations [data-layer-id="${newLayerId}"] [data-decoration-id]`
+        );
+        await expect(copiedDecorations).toHaveCount(1, { timeout: 5_000 });
+        await expect(copiedDecorations.first()).not.toHaveAttribute('data-decoration-id', sourceId);
+        await expect(page.locator(`#map-container svg .decorations [data-decoration-id="${sourceId}"]`))
+            .toHaveCount(1);
     });
 
     test('Escape closes context menu', async ({ page }) => {

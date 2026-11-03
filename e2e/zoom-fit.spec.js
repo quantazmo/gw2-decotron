@@ -82,6 +82,56 @@ async function getTileRowGaps(page) {
 
 test.describe('Fit Default Zoom to Map Display Area', () => {
 
+    test('Fit Selected centers a selected decoration in the map viewport', async ({ page }) => {
+        await loadLayout(page);
+
+        const circles = page.locator('#map-container svg .decorations [data-decoration-id]');
+        await expect(circles.first()).toBeVisible();
+        const targetId = await circles.evaluateAll(elements => {
+            const container = document.getElementById('map-container').getBoundingClientRect();
+            const centerX = (container.left + container.right) / 2;
+            const centerY = (container.top + container.bottom) / 2;
+            return elements
+                .map(element => {
+                    const bounds = element.getBoundingClientRect();
+                    return {
+                        id: element.getAttribute('data-decoration-id'),
+                        distance: Math.hypot((bounds.left + bounds.right) / 2 - centerX, (bounds.top + bounds.bottom) / 2 - centerY)
+                    };
+                })
+                .sort((first, second) => second.distance - first.distance)[0]?.id;
+        });
+        expect(targetId).toBeTruthy();
+
+        const target = page.locator(`#map-container svg .decorations [data-decoration-id="${targetId}"]`);
+        await target.evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+        await expect(target).toHaveClass(/selected-decoration/);
+
+        const fitSelected = page.locator('[data-action="ribbon-fit-selected"]');
+        await expect(fitSelected).toBeEnabled();
+
+        const measureOffset = () => target.evaluate(element => {
+            const targetBounds = element.getBoundingClientRect();
+            const containerBounds = document.getElementById('map-container').getBoundingClientRect();
+            return {
+                offsetX: (targetBounds.left + targetBounds.right - containerBounds.left - containerBounds.right) / 2,
+                offsetY: (targetBounds.top + targetBounds.bottom - containerBounds.top - containerBounds.bottom) / 2,
+                width: containerBounds.width,
+                height: containerBounds.height
+            };
+        });
+        const beforeFit = await measureOffset();
+        expect(Math.abs(beforeFit.offsetX) + Math.abs(beforeFit.offsetY)).toBeGreaterThan(beforeFit.width * 0.1);
+
+        await fitSelected.click();
+
+        await expect.poll(async () => {
+            const afterFit = await measureOffset();
+            return Math.abs(afterFit.offsetX) <= afterFit.width * 0.1 &&
+                Math.abs(afterFit.offsetY) <= afterFit.height * 0.1;
+        }).toBe(true);
+    });
+
     test('map SVG is rendered inside the chart container after layout load', async ({ page }) => {
         await loadLayout(page);
 

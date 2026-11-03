@@ -801,10 +801,8 @@ function setupAppServiceEventBindings(context: ApplicationContext): void {
     // When a decoration is added, update AppStore
     appService.subscribe<{ layerId: string; decoration: Decoration }>('DecorationAddedEvent', (event) => {
         console.log('[Event Flow] DecorationAddedEvent → AppStore.dispatch + EventBus.publish');
-        appStore.dispatch('ADD_DECORATION', {
-            layerId: event.layerId,
-            decoration: event.decoration
-        });
+        // The layout and AppStore share the same layer instances; handlers have already added it.
+        appStore.dispatch('SET_DIRTY', true);
         eventBus.publish('decoration:added', event);
     });
 

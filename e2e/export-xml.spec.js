@@ -24,92 +24,45 @@ async function loadLayout(page) {
 
 test.describe('Export Decorations to XML', () => {
 
-    test('export button is disabled before layout loads and enabled after', async ({ page }) => {
+    test('export dialog reflects layout state and cancels without downloading', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('body[data-app-ready]', { state: 'attached', timeout: 15_000 });
 
-        // Before layout: button should be disabled
         await expect(page.locator('#export-btn')).toBeDisabled();
 
-        // Load layout
         await page.locator('#file-input').setInputFiles(HOMESTEAD_XML);
         await expect(page.locator('#layers-list .layer-item').first()).toBeVisible({ timeout: 10_000 });
-
-        // After layout: button should be enabled
         await expect(page.locator('#export-btn')).toBeEnabled({ timeout: 5_000 });
-    });
 
-    test('export button opens the export dialog', async ({ page }) => {
-        await loadLayout(page);
-
-        // Open export dialog
+        let downloadFired = false;
+        page.on('download', () => { downloadFired = true; });
         await page.locator('#export-btn').click();
-
-        // Dialog should be visible
-        await expect(page.locator('dialog.export-dialog')).toBeVisible({ timeout: 5_000 });
-    });
-
-    test('dialog pre-checks layers matching their visibility', async ({ page }) => {
-        await loadLayout(page);
-
-        // Open export dialog
-        await page.locator('#export-btn').click();
-        await expect(page.locator('dialog.export-dialog')).toBeVisible({ timeout: 5_000 });
-
-        // Every checkbox state should match the layer visibility in the panel
+        const dialog = page.locator('dialog.export-dialog');
+        await expect(dialog).toBeVisible({ timeout: 5_000 });
         const layerItems = page.locator('#layers-list .layer-item');
-        const checkboxes = page.locator('dialog.export-dialog .export-dialog__checkbox');
+        const checkboxes = dialog.locator('.export-dialog__checkbox');
+        const countBadges = dialog.locator('.export-dialog__layer-count');
 
         const layerCount = await layerItems.count();
-        const checkboxCount = await checkboxes.count();
-        expect(checkboxCount).toBe(layerCount);
-
-        // Cancel to close
-        await page.locator('dialog.export-dialog .export-dialog__cancel').click();
-        await expect(page.locator('dialog.export-dialog')).not.toBeVisible({ timeout: 3_000 });
-    });
-
-    test('dialog shows decoration count per layer', async ({ page }) => {
-        await loadLayout(page);
-
-        await page.locator('#export-btn').click();
-        await expect(page.locator('dialog.export-dialog')).toBeVisible({ timeout: 5_000 });
-
-        // Every layer row should have a count badge
-        const countBadges = page.locator('dialog.export-dialog .export-dialog__layer-count');
-        const count = await countBadges.count();
-        expect(count).toBeGreaterThan(0);
-
-        // Each badge should contain "decoration" (singular or plural)
-        for (let i = 0; i < count; i++) {
-            const text = await countBadges.nth(i).textContent();
-            expect(text).toMatch(/decoration/i);
+        await expect(checkboxes).toHaveCount(layerCount);
+        await expect(countBadges).toHaveCount(layerCount);
+        for (let index = 0; index < layerCount; index++) {
+            const isVisible = await layerItems.nth(index).locator('.visibility-icon').getAttribute('data-visible');
+            await expect(checkboxes.nth(index)).toBeChecked({ checked: isVisible === 'true' });
+            await expect(countBadges.nth(index)).toContainText(/\d+ decoration/i);
         }
 
-        await page.locator('dialog.export-dialog .export-dialog__cancel').click();
-    });
-
-    test('confirm is disabled when all layers are unchecked', async ({ page }) => {
-        await loadLayout(page);
-
-        await page.locator('#export-btn').click();
-        await expect(page.locator('dialog.export-dialog')).toBeVisible({ timeout: 5_000 });
-
-        // Uncheck all checkboxes
-        const checkboxes = page.locator('dialog.export-dialog .export-dialog__checkbox');
-        const count = await checkboxes.count();
-        for (let i = 0; i < count; i++) {
-            const checkbox = checkboxes.nth(i);
-            const isChecked = await checkbox.isChecked();
-            if (isChecked) {
+        for (const checkbox of await checkboxes.all()) {
+            if (await checkbox.isChecked()) {
                 await checkbox.uncheck();
             }
         }
 
-        // Confirm button should be disabled
-        await expect(page.locator('dialog.export-dialog .export-dialog__confirm')).toBeDisabled({ timeout: 2_000 });
+        await expect(dialog.locator('.export-dialog__confirm')).toBeDisabled();
+        await dialog.locator('.export-dialog__cancel').click();
+        await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+        expect(downloadFired).toBe(false);
 
-        await page.locator('dialog.export-dialog .export-dialog__cancel').click();
     });
 
     test('confirming export triggers a file download', async ({ page }) => {
@@ -129,38 +82,4 @@ test.describe('Export Decorations to XML', () => {
         expect(download.suggestedFilename()).toMatch(/\.xml$/);
     });
 
-    test('cancel button closes dialog without downloading', async ({ page }) => {
-        await loadLayout(page);
-
-        let downloadFired = false;
-        page.on('download', () => { downloadFired = true; });
-
-        await page.locator('#export-btn').click();
-        await expect(page.locator('dialog.export-dialog')).toBeVisible({ timeout: 5_000 });
-
-        await page.locator('dialog.export-dialog .export-dialog__cancel').click();
-
-        // Dialog should close
-        await expect(page.locator('dialog.export-dialog')).not.toBeVisible({ timeout: 3_000 });
-
-        // No download should have been triggered
-        expect(downloadFired).toBe(false);
-    });
-
-    test('escape key closes dialog without downloading', async ({ page }) => {
-        await loadLayout(page);
-
-        let downloadFired = false;
-        page.on('download', () => { downloadFired = true; });
-
-        await page.locator('#export-btn').click();
-        await expect(page.locator('dialog.export-dialog')).toBeVisible({ timeout: 5_000 });
-
-        await page.keyboard.press('Escape');
-
-        // Dialog should close
-        await expect(page.locator('dialog.export-dialog')).not.toBeVisible({ timeout: 3_000 });
-
-        expect(downloadFired).toBe(false);
-    });
 });

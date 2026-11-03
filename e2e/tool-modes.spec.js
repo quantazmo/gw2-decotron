@@ -23,9 +23,41 @@ async function loadLayout(page) {
     await expect(page.locator('#layers-list .layer-item').first()).toBeVisible({ timeout: 10_000 });
 }
 
+async function getSparseDecorationCenters(page) {
+    const centers = await page.locator('#map-container svg .decorations [data-decoration-id]').evaluateAll(elements =>
+        elements.map(element => {
+            const bounds = element.getBoundingClientRect();
+            return {
+                id: element.getAttribute('data-decoration-id'),
+                x: (bounds.left + bounds.right) / 2,
+                y: (bounds.top + bounds.bottom) / 2
+            };
+        })
+    );
+
+    return centers.filter(center => centers.every(other => {
+        if (other.id === center.id) return true;
+        return Math.hypot(other.x - center.x, other.y - center.y) > 16;
+    }));
+}
+
+async function drawLassoAround(page, center, additive = false) {
+    if (additive) await page.keyboard.down('Control');
+
+    await page.mouse.move(center.x - 5, center.y - 5);
+    await page.mouse.down();
+    await page.mouse.move(center.x + 5, center.y - 5, { steps: 2 });
+    await page.mouse.move(center.x + 5, center.y + 5, { steps: 2 });
+    await page.mouse.move(center.x - 5, center.y + 5, { steps: 2 });
+    await page.mouse.move(center.x - 5, center.y - 5, { steps: 2 });
+    await page.mouse.up();
+
+    if (additive) await page.keyboard.up('Control');
+}
+
 test.describe('Tool Modes', () => {
 
-    test('ribbon toolbar has Map Pan and Multi Select buttons', async ({ page }) => {
+    test('toolbar loads with Pan active and switches modes', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('body[data-app-ready]', { state: 'attached', timeout: 15_000 });
 
@@ -34,42 +66,13 @@ test.describe('Tool Modes', () => {
 
         await expect(panBtn).toBeVisible();
         await expect(selectBtn).toBeVisible();
-    });
-
-    test('Map Pan is active (aria-pressed=true) by default', async ({ page }) => {
-        await page.goto('/');
-        await page.waitForSelector('body[data-app-ready]', { state: 'attached', timeout: 15_000 });
-
-        const panBtn = page.locator('[data-action="tool-pan"]');
-        const selectBtn = page.locator('[data-action="tool-select"]');
-
         await expect(panBtn).toHaveAttribute('aria-pressed', 'true');
         await expect(selectBtn).toHaveAttribute('aria-pressed', 'false');
-    });
-
-    test('clicking Multi Select switches aria-pressed state', async ({ page }) => {
-        await page.goto('/');
-        await page.waitForSelector('body[data-app-ready]', { state: 'attached', timeout: 15_000 });
-
-        const panBtn = page.locator('[data-action="tool-pan"]');
-        const selectBtn = page.locator('[data-action="tool-select"]');
 
         await selectBtn.click();
-
         await expect(selectBtn).toHaveAttribute('aria-pressed', 'true');
         await expect(panBtn).toHaveAttribute('aria-pressed', 'false');
-    });
-
-    test('switching back to Map Pan updates aria-pressed', async ({ page }) => {
-        await page.goto('/');
-        await page.waitForSelector('body[data-app-ready]', { state: 'attached', timeout: 15_000 });
-
-        const panBtn = page.locator('[data-action="tool-pan"]');
-        const selectBtn = page.locator('[data-action="tool-select"]');
-
-        await selectBtn.click();
         await panBtn.click();
-
         await expect(panBtn).toHaveAttribute('aria-pressed', 'true');
         await expect(selectBtn).toHaveAttribute('aria-pressed', 'false');
     });
@@ -129,36 +132,35 @@ test.describe('Tool Modes', () => {
         await expect(lassoBtn).toHaveAttribute('aria-pressed', 'true');
         await expect(page.locator('.selection-shortcut-hint')).toBeVisible();
 
-        const circles = page.locator('svg .decorations [data-decoration-id]');
-        const count = await circles.count();
-        if (count === 0) {
-            test.skip('No decorations rendered');
+        const sparseCenters = await getSparseDecorationCenters(page);
+        if (sparseCenters.length < 2) {
+            test.skip('Could not find two separated decorations for lasso assertions');
             return;
         }
 
-        const firstBox = await circles.first().boundingBox();
-        const svgBox = await page.locator('svg').first().boundingBox();
-        if (!firstBox || !svgBox) {
-            test.skip('Could not obtain map element bounds');
-            return;
-        }
+        const target = sparseCenters[0];
+        const outside = sparseCenters.reduce((farthest, center) =>
+            Math.hypot(center.x - target.x, center.y - target.y) > Math.hypot(farthest.x - target.x, farthest.y - target.y)
+                ? center
+                : farthest
+        );
+        const decoration = id => page.locator(`#map-container svg .decorations [data-decoration-id="${id}"]`);
 
-        const left = firstBox.x - svgBox.x - 12;
-        const top = firstBox.y - svgBox.y - 12;
-        const right = firstBox.x - svgBox.x + firstBox.width + 12;
-        const bottom = firstBox.y - svgBox.y + firstBox.height + 12;
+        await drawLassoAround(page, target);
 
-        await page.mouse.move(svgBox.x + left, svgBox.y + top);
-        await page.mouse.down();
-        await page.mouse.move(svgBox.x + right, svgBox.y + top, { steps: 3 });
-        await expect(page.locator('svg .selection-lasso')).toHaveAttribute('d', /L/);
-        await page.mouse.move(svgBox.x + right, svgBox.y + (top + bottom) / 2, { steps: 2 });
-        await page.mouse.move(svgBox.x + right - 4, svgBox.y + bottom, { steps: 2 });
-        await page.mouse.move(svgBox.x + left, svgBox.y + bottom - 4, { steps: 2 });
-        await page.mouse.move(svgBox.x + left, svgBox.y + top, { steps: 2 });
-        await page.mouse.up();
+        await expect(page.locator('svg .selection-lasso')).toHaveCount(0);
+        await expect(decoration(target.id)).toHaveClass(/selected-decoration/, { timeout: 3_000 });
+        await expect(decoration(outside.id)).not.toHaveClass(/selected-decoration/);
 
-        await expect(page.locator('svg .decorations .selected-decoration').first()).toBeVisible({ timeout: 3_000 });
+        const additiveTarget = sparseCenters.find(center =>
+            center.id !== target.id && center.id !== outside.id &&
+            Math.hypot(center.x - target.x, center.y - target.y) > 32
+        ) ?? outside;
+        await drawLassoAround(page, additiveTarget, true);
+
+        await expect(decoration(target.id)).toHaveClass(/selected-decoration/);
+        await expect(decoration(additiveTarget.id)).toHaveClass(/selected-decoration/);
+        await expect(decoration(outside.id)).not.toHaveClass(/selected-decoration/);
     });
 
     test('switching back to Map Pan preserves selection', async ({ page }) => {

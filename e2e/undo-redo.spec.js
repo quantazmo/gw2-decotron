@@ -78,6 +78,11 @@ test.describe('Undo and Redo All Decoration Actions', () => {
         await firstLayer.hover();
         await firstLayer.locator('.delete-layer-btn').click();
 
+        const dialog = page.locator('dialog.confirm-dialog[open]');
+        await expect(dialog).toBeVisible();
+        await expect(dialog.locator('.confirm-dialog__title')).toHaveText('Delete Layer');
+        await dialog.locator('.confirm-dialog__confirm').click();
+
         // Wait for deletion
         await expect(layers).toHaveCount(1, { timeout: 5_000 });
 

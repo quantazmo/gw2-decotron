@@ -31,69 +31,25 @@ async function loadLayout(page) {
 
 test.describe('Toggle Layer Visibility', () => {
 
-    test('toggling visibility hides layer decorations on map', async ({ page }) => {
+    test('hiding and restoring a layer updates the panel and map', async ({ page }) => {
         await loadLayout(page);
 
-        // Verify decorations are rendered on map (SVG circles in the decorations group)
         const decorationCircles = page.locator('svg .decorations .decoration');
         const countBefore = await decorationCircles.count();
         expect(countBefore).toBeGreaterThan(0);
 
-        // Click the visibility icon on the first layer to hide it
         const firstLayer = page.locator('#layers-list .layer-item').first();
         const visibilityIcon = firstLayer.locator('.visibility-icon');
         await visibilityIcon.click();
 
-        // Wait for the visibility attribute to update
         await expect(visibilityIcon).toHaveAttribute('data-visible', 'false');
-
-        // The layer group for the hidden layer should no longer be in the DOM
-        // (MapViewer.renderLayers skips hidden layers)
-        // Verify fewer decorations are rendered on map
+        await expect(firstLayer).toHaveClass(/layer-hidden/);
         const countAfter = await decorationCircles.count();
         expect(countAfter).toBeLessThan(countBefore);
-    });
 
-    test('toggling visibility back on restores decorations on map', async ({ page }) => {
-        await loadLayout(page);
-
-        const decorationCircles = page.locator('svg .decorations .decoration');
-        const countBefore = await decorationCircles.count();
-
-        // Hide layer
-        const firstLayer = page.locator('#layers-list .layer-item').first();
-        const visibilityIcon = firstLayer.locator('.visibility-icon');
-        await visibilityIcon.click();
-        await expect(visibilityIcon).toHaveAttribute('data-visible', 'false');
-
-        // Show layer again
         await visibilityIcon.click();
         await expect(visibilityIcon).toHaveAttribute('data-visible', 'true');
-
-        // Decorations should be restored
-        const countAfter = await decorationCircles.count();
-        expect(countAfter).toBe(countBefore);
-    });
-
-    test('hidden layer shows dimmed visual indicator in Layer Panel', async ({ page }) => {
-        await loadLayout(page);
-
-        const firstLayer = page.locator('#layers-list .layer-item').first();
-
-        // Initially not dimmed
         await expect(firstLayer).not.toHaveClass(/layer-hidden/);
-
-        // Hide layer
-        const visibilityIcon = firstLayer.locator('.visibility-icon');
-        await visibilityIcon.click();
-
-        // Should have dimmed class
-        await expect(firstLayer).toHaveClass(/layer-hidden/);
-
-        // Show layer again
-        await visibilityIcon.click();
-
-        // Dimmed class should be removed
-        await expect(firstLayer).not.toHaveClass(/layer-hidden/);
+        await expect(decorationCircles).toHaveCount(countBefore);
     });
 });

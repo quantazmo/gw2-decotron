@@ -451,7 +451,7 @@ class LayerPanel {
 
         const confirmed = await this._confirmDialog.show({
             title: 'Delete Layer',
-            message: `Delete "${layerName}" and its ${decorationText}? You can undo this action.`,
+            message: `Delete "${layerName}" and its ${decorationText}?`,
             confirmLabel: 'Delete',
             cancelLabel: 'Cancel'
         });
