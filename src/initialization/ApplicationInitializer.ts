@@ -30,6 +30,7 @@ import { ToggleLayerVisibilityHandler } from '../application/handlers/ToggleLaye
 import { DeleteLayerHandler } from '../application/handlers/DeleteLayerHandler.js';
 import { CreateLayerHandler } from '../application/handlers/CreateLayerHandler.js';
 import { UpdateDecorationHandler } from '../application/handlers/UpdateDecorationHandler.js';
+import { UpdateDecorationsHandler } from '../application/handlers/UpdateDecorationsHandler.js';
 import { MoveDecorationsHandler } from '../application/handlers/MoveDecorationsHandler.js';
 import { CopyDecorationsHandler } from '../application/handlers/CopyDecorationsHandler.js';
 import { MergeLayerHandler } from '../application/handlers/MergeLayerHandler.js';
@@ -200,6 +201,7 @@ export async function initializeApplication(): Promise<ApplicationContext> {
     // Re-register UpdateDecorationHandler with undoRedoManager
     console.log('[ApplicationInitializer]   ↳ Registering UpdateDecorationHandler with UndoRedoManager...');
     appService.registerCommandHandler('UpdateDecorationCommand', new UpdateDecorationHandler(homesteadLayout, undoRedoManager));
+    appService.registerCommandHandler('UpdateDecorationsCommand', new UpdateDecorationsHandler(homesteadLayout, undoRedoManager));
 
     // Register CopyDecorationsHandler with undo support
     appService.registerCommandHandler('CopyDecorationsCommand', new CopyDecorationsHandler(homesteadLayout, undoRedoManager));
@@ -307,6 +309,20 @@ export async function initializeApplication(): Promise<ApplicationContext> {
                 appService.execute({
                     type: 'UpdateDecorationCommand',
                     payload: { ...record.forwardData, recordUndo: false }
+                });
+            }
+        },
+        UpdateDecorationsCommand: {
+            undo(record) {
+                appService.execute({
+                    type: 'UpdateDecorationsCommand',
+                    payload: { ...(record.reverseData as object), recordUndo: false }
+                });
+            },
+            redo(record) {
+                appService.execute({
+                    type: 'UpdateDecorationsCommand',
+                    payload: { ...(record.forwardData as object), recordUndo: false }
                 });
             }
         },

@@ -300,8 +300,51 @@ describe('MapViewer', () => {
 
             await viewer.commitMoveSelected();
             expect(appService.execute).toHaveBeenCalledWith({
-                type: 'UpdateDecorationCommand',
-                payload: { layerId: 'layer-1', decorationId: 'a', position: { x: 20, y: 40, z: 0, rotation: 0 } }
+                type: 'UpdateDecorationsCommand',
+                payload: {
+                    updates: [{
+                        layerId: 'layer-1',
+                        decorationId: 'a',
+                        position: { x: 20, y: 40, z: 0, rotation: 0 }
+                    }]
+                }
+            });
+        });
+
+        it('commits all selected decorations through one batch command', async () => {
+            const svg = makeSvg();
+            const linearScale = value => value;
+            linearScale.domain = () => [0, 100];
+            linearScale.range = () => [0, 100];
+            window.xZoom = linearScale;
+            window.yZoom = linearScale;
+
+            const first = { uid: 'a', name: 'Decoration A', position: { x: 10, y: 20 } };
+            const second = { uid: 'b', name: 'Decoration B', position: { x: 30, y: 40 } };
+            const layer = { id: 'layer-1', isVisible: true, color: '#00d4ff', decorations: [first, second] };
+            const state = { map: makeMap(1), layers: [layer] };
+            const appService = { execute: vi.fn().mockResolvedValue(undefined) };
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(state), {
+                getSelectedIds: () => ['a', 'b'],
+                isSelected: id => id === 'a' || id === 'b',
+                subscribe: vi.fn(),
+            });
+            viewer.setAppService(appService);
+            viewer.render(state);
+
+            viewer.beginMoveSelected();
+            viewer.setMoveSelectedPosition({ x: 5, y: 7, z: 0 });
+            await viewer.commitMoveSelected();
+
+            expect(appService.execute).toHaveBeenCalledTimes(1);
+            expect(appService.execute).toHaveBeenCalledWith({
+                type: 'UpdateDecorationsCommand',
+                payload: {
+                    updates: [
+                        { layerId: 'layer-1', decorationId: 'a', position: { x: 15, y: 27, z: 0, rotation: 0 } },
+                        { layerId: 'layer-1', decorationId: 'b', position: { x: 35, y: 47, z: 0, rotation: 0 } }
+                    ]
+                }
             });
         });
 

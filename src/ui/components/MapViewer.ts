@@ -1073,19 +1073,21 @@ class MapViewer {
             }
             if (copiedIds.length > 0) this.selectionStore?.selectAll(copiedIds);
         } else {
-            await Promise.all(originals.map(record => this.appService!.execute({
-                type: 'UpdateDecorationCommand',
+            await this.appService.execute({
+                type: 'UpdateDecorationsCommand',
                 payload: {
-                    layerId: record.layerId,
-                    decorationId: record.decoration.uid,
-                    position: {
-                        x: record.position.x + deltaX,
-                        y: record.position.y + deltaY,
-                        z: record.position.z + deltaZ,
-                        rotation: record.rotation
-                    }
+                    updates: originals.map(record => ({
+                        layerId: record.layerId,
+                        decorationId: record.decoration.uid,
+                        position: {
+                            x: record.position.x + deltaX,
+                            y: record.position.y + deltaY,
+                            z: record.position.z + deltaZ,
+                            rotation: record.rotation
+                        }
+                    }))
                 }
-            })));
+            });
         }
 
         this.cancelMoveSelected();
