@@ -81,7 +81,7 @@
   --context-menu-hover: #2a2a3a;
 
   /* Welcome overlay */
-  --welcome-bg: #1e1e1e;
+  --welcome-bg: #1e1e2e;
   --welcome-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   --welcome-icon: #569cd6;
   --welcome-title: #f0f0f0;
@@ -121,7 +121,7 @@
     --context-menu-hover: #2a2a3a;
 
     /* Welcome overlay */
-    --welcome-bg: #1e1e1e;
+    --welcome-bg: #1e1e2e;
     --welcome-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
     --welcome-icon: #569cd6;
     --welcome-title: #f0f0f0;
