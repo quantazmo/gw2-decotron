@@ -2,12 +2,12 @@
 
 This project does not accept contributions or pull requests. To make your own changes, fork the repository on GitHub and work from your copy:
 
-1. Click **Fork** on the [repository page](https://github.com/quantazmo/gw2-deco).
+1. Click **Fork** on the [repository page](https://github.com/quantazmo/gw2-decotron).
 2. Clone your fork and enter the project directory:
 
 	```bash
-	git clone https://github.com/<your-username>/gw2-deco.git
-	cd gw2-deco
+	git clone https://github.com/<your-username>/gw2-decotron.git
+	cd gw2-decotron
 	```
 
 3. Install dependencies and create a branch for your changes:

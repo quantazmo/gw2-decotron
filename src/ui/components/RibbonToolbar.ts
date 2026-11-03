@@ -184,7 +184,7 @@ export class RibbonToolbar {
         ]));
 
         toolbar.appendChild(this._createGroup('Links', [
-            this._makeLink('View on GitHub', 'ribbon-github', 'https://github.com/quantazmo/gw2-deco'),
+            this._makeLink('View on GitHub', 'ribbon-github', 'https://github.com/quantazmo/gw2-decotron'),
         ]));
 
         this._element = toolbar;

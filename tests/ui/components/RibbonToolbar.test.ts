@@ -118,7 +118,7 @@ describe('RibbonToolbar', () => {
             expect(button.closest('[data-group="create"]')).toBe(groups[4]);
         }
         const githubLink = el.querySelector('[data-action="ribbon-github"]');
-        expect(githubLink.getAttribute('href')).toBe('https://github.com/quantazmo/gw2-deco');
+        expect(githubLink.getAttribute('href')).toBe('https://github.com/quantazmo/gw2-decotron');
         expect(githubLink.getAttribute('aria-label')).toBe('View on GitHub');
         expect(githubLink.parentElement.parentElement).toBe(groups[groups.length - 1]);
     });
