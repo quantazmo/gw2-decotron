@@ -35,7 +35,7 @@ function makeEventBus() {
     };
 }
 
-function makeAppStore(layout = null, mapType = null) {
+function makeAppStore(layout: any = null, mapType = null) {
     return { getState: vi.fn(() => ({ layout, mapType })) };
 }
 
@@ -110,7 +110,7 @@ describe('RibbonToolbar', () => {
         for (const action of [
             'ribbon-move-selected',
             'ribbon-rotate-selected',
-            'ribbon-decoration-duplicator',
+            'ribbon-extend-decorations',
             'ribbon-fill-decorations',
         ]) {
             const button = el.querySelector(`[data-action="${action}"]`);
@@ -141,21 +141,42 @@ describe('RibbonToolbar', () => {
 
     test('Create tools follow their selection requirements and explain them in tooltips', () => {
         const selectionStore = makeSelectionStore();
-        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
+        const decorations = new Map<string, { id: string }>([
+            ['dec-1', { id: 'type-a' }],
+            ['dec-2', { id: 'type-b' }],
+            ['dec-3', { id: 'type-a' }],
+        ]);
+        const layout = {
+            getDecorationLayer: vi.fn((decorationId: string) => ({
+                getDecoration: (id: string) => id === decorationId ? decorations.get(id) ?? null : null,
+            })),
+        };
+        const toolbar = new RibbonToolbar(appService, makeAppStore(layout), zoomStore, eventBus, null, null, selectionStore);
         const el = toolbar.getElement();
         const moveButton = el.querySelector('[data-action="ribbon-move-selected"]');
         const rotateButton = el.querySelector('[data-action="ribbon-rotate-selected"]');
-        const duplicatorButton = el.querySelector('[data-action="ribbon-decoration-duplicator"]');
+        const duplicatorButton = el.querySelector('[data-action="ribbon-extend-decorations"]');
         const fillButton = el.querySelector('[data-action="ribbon-fill-decorations"]');
 
-        expect(moveButton.title).toContain('more than 2 decorations');
-        expect(rotateButton.title).toContain('more than 2 decorations');
-        expect(duplicatorButton.title).toContain('exactly 2 decorations');
-        expect(fillButton.title).toContain('exactly 2 decorations');
+        expect(moveButton.title).toBe('Move Selected');
+        expect(rotateButton.title).toBe('Rotate Selected');
+        expect(duplicatorButton.title).toContain('exactly 2 decorations of the same type');
+        expect(fillButton.title).toContain('exactly 2 decorations of the same type');
 
-        selectionStore.setSelectedIds(['dec-1', 'dec-2']);
         expect(moveButton.disabled).toBe(true);
         expect(rotateButton.disabled).toBe(true);
+
+        selectionStore.setSelectedIds(['dec-1']);
+        expect(moveButton.disabled).toBe(false);
+        expect(rotateButton.disabled).toBe(false);
+
+        selectionStore.setSelectedIds(['dec-1', 'dec-2']);
+        expect(moveButton.disabled).toBe(false);
+        expect(rotateButton.disabled).toBe(false);
+        expect(duplicatorButton.disabled).toBe(true);
+        expect(fillButton.disabled).toBe(true);
+
+        selectionStore.setSelectedIds(['dec-1', 'dec-3']);
         expect(duplicatorButton.disabled).toBe(false);
         expect(fillButton.disabled).toBe(false);
 
@@ -164,6 +185,18 @@ describe('RibbonToolbar', () => {
         expect(rotateButton.disabled).toBe(false);
         expect(duplicatorButton.disabled).toBe(true);
         expect(fillButton.disabled).toBe(true);
+    });
+
+    test('Rotate Selected opens a coming-soon alert', () => {
+        const selectionStore = makeSelectionStore(['dec-1']);
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
+        const rotateButton = toolbar.getElement().querySelector('[data-action="ribbon-rotate-selected"]');
+
+        rotateButton.click();
+
+        expect(alertSpy).toHaveBeenCalledWith('Coming soon!');
+        alertSpy.mockRestore();
     });
 
     // ─────────────────────────────────────────────────────────────────────────
