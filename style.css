@@ -1429,6 +1429,25 @@ button:active {
   display: none;
 }
 
+.ribbon-display-select {
+  width: 76px;
+  height: 32px;
+  margin: 0 4px;
+  padding: 0 6px;
+  color: var(--text-primary);
+  background: var(--toolbar-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ribbon-display-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .ribbon-btn svg {
   width: 24px;
   height: 24px;

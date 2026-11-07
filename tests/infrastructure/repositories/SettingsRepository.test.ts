@@ -36,6 +36,7 @@ describe('SettingsRepository', () => {
             expect(parsed.version).toBe(1);
             expect(parsed.apiKey).toBe('my-test-key');
             expect(parsed.angleUnit).toBe('degrees');
+            expect(parsed.decorationDisplayMode).toBe('small');
         });
 
         it('should store under the correct SETTINGS_STORAGE_KEY', () => {
@@ -79,7 +80,7 @@ describe('SettingsRepository', () => {
         it('should return default settings when localStorage key is missing', () => {
             const result = repository.load();
 
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
 
         it('should deserialize a previously saved apiKey', () => {
@@ -93,6 +94,22 @@ describe('SettingsRepository', () => {
         it('should round-trip the selected angle unit', () => {
             repository.save({ angleUnit: 'radians' });
             expect(repository.load().angleUnit).toBe('radians');
+        });
+
+        it('should round-trip the selected decoration display mode', () => {
+            repository.save({ decorationDisplayMode: 'icon' });
+            expect(repository.load().decorationDisplayMode).toBe('icon');
+        });
+
+        it('should preserve the decoration display mode when saving other settings', () => {
+            repository.save({ decorationDisplayMode: 'large' });
+            repository.save({ apiKey: 'updated-key', theme: 'dark', angleUnit: 'radians' });
+            expect(repository.load().decorationDisplayMode).toBe('large');
+        });
+
+        it('should default invalid decoration display modes to small', () => {
+            mockStorage.setItem(SETTINGS.SETTINGS_STORAGE_KEY, JSON.stringify({ version: 1, decorationDisplayMode: 'giant' }));
+            expect(repository.load().decorationDisplayMode).toBe('small');
         });
 
         it('should default to degrees when the saved settings have no angle unit', () => {
@@ -113,7 +130,7 @@ describe('SettingsRepository', () => {
 
             const result = repository.load();
 
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
 
         it('should return defaults when stored version is unsupported', () => {
@@ -122,7 +139,7 @@ describe('SettingsRepository', () => {
 
             const result = repository.load();
 
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
 
         it('should return defaults when stored document is not an object', () => {
@@ -130,7 +147,7 @@ describe('SettingsRepository', () => {
 
             const result = repository.load();
 
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
 
         it('should return defaults when stored document is a plain string', () => {
@@ -138,7 +155,7 @@ describe('SettingsRepository', () => {
 
             const result = repository.load();
 
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
 
         it('should return apiKey as empty string when stored apiKey is not a string', () => {
@@ -184,7 +201,7 @@ describe('SettingsRepository', () => {
 
             const result = repository.load();
 
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
     });
 });

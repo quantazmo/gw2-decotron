@@ -35,6 +35,7 @@ vi.mock('../../../src/ui/components/SelectionRectangle.js', () => ({
 }));
 
 const { MapViewer } = await import('../../../src/ui/components/MapViewer.js');
+import { MapType } from '../../../src/domain/MapType.js';
 
 function makeSvg() {
     return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -169,6 +170,33 @@ describe('MapViewer', () => {
             viewer.render({ map: null, layers: [] });
             expect(viewer.tileGroup.querySelectorAll('image')).toHaveLength(0);
         });
+    });
+
+    it('loads decoration icons and renders them inside a layer-colored circular border', async () => {
+        const svg = makeSvg();
+        const iconApi = {
+            getHomesteadDecorations: vi.fn().mockResolvedValue([{ id: 21, icon: 'https://example.com/decoration.png' }]),
+            getGuildUpgrades: vi.fn(),
+        };
+        const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(), makeSelectionStore(), iconApi);
+        const layer = {
+            id: 'layer-1',
+            isVisible: true,
+            color: '#123456',
+            decorations: [{ uid: 'decoration-1', id: 21, name: 'Test decoration', position: { x: 30, y: 40 } }],
+        };
+        viewer.render({ map: makeMap(1), mapType: MapType.Homestead, layers: [layer] });
+        viewer.setDecorationDisplayMode('icon');
+
+        await Promise.resolve();
+
+        const image = viewer.decorationsGroup.querySelector('.decoration-icon');
+        const border = viewer.decorationsGroup.querySelector('.decoration-point');
+        expect(iconApi.getHomesteadDecorations).toHaveBeenCalledWith([21], 'en');
+        expect(image.getAttribute('href')).toBe('https://example.com/decoration.png');
+        expect(image.getAttribute('width')).toBe('24');
+        expect(border.getAttribute('r')).toBe('15');
+        expect(border.getAttribute('stroke')).toBe('#123456');
     });
 
     describe('selection shortcut hint', () => {

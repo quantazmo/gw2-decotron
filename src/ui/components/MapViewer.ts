@@ -12,6 +12,7 @@ import { SelectionLasso } from './SelectionLasso.js';
 import type { GW2Map } from '../../domain/GW2Map.js';
 import type { Layer } from '../../domain/Layer.js';
 import type { Decoration } from '../../domain/Decoration.js';
+import { MapType } from '../../domain/MapType.js';
 
 declare global {
     interface Window {
@@ -23,6 +24,7 @@ declare global {
 interface MapViewerState {
     map: GW2Map | null;
     layers: MapViewerLayer[];
+    mapType?: MapType | null;
 }
 
 interface ZoomStoreLike {
@@ -66,12 +68,18 @@ interface AppServiceLike {
     execute: (command: { type: string; payload: unknown }) => Promise<unknown>;
 }
 
+interface DecorationIconApi {
+    getHomesteadDecorations: (ids: number[], lang?: string) => Promise<Array<{ id: number; icon?: string }> | null>;
+    getGuildUpgrades: (ids: number[]) => Promise<Array<{ id: number; icon?: string }> | null>;
+}
+
 interface ContextMenuLike {
     show: (x: number, y: number, items: Array<{ label: string; action?: () => void; submenu?: Array<{ label: string; action: () => void }> }>) => void;
 }
 
 interface MapViewerDecoration {
     uid: string;
+    id?: number | string;
     name?: string;
     color?: string;
     position: { x: number; y: number };
@@ -97,6 +105,8 @@ interface MapViewerLayer {
 
 const TILE_EDGE_OVERDRAW = 0.5;
 const NEW_LAYER_TARGET_ID = '__new__';
+const DECORATION_ICON_SIZE = 24;
+const DECORATION_ICON_FRAME_PADDING = 3;
 
 class MapViewer {
     private svgElement: SVGSVGElement;
@@ -110,8 +120,14 @@ class MapViewer {
     private decorationsGroup!: SVGGElement;
     private currentMap: GW2Map | null;
     private currentLayers: MapViewerLayer[];
+    private _decorationDisplayMode: 'small' | 'large' | 'icon' = 'small';
+    private _decorationIconApi: DecorationIconApi | null;
+    private _decorationIcons = new Map<number, string>();
+    private _requestedDecorationIds = new Set<number>();
+    private _iconCatalog: MapType | null = null;
     private _lastRenderedMapId: number | null;
     private decorationCircles: Map<string, SVGCircleElement>;
+    private decorationImages = new Map<string, SVGImageElement>();
     private _contextMenu: ContextMenuLike | null;
     private _toolModeStore: ToolModeStoreLike | null;
     private _selectionRect: SelectionRectangle | null;
@@ -141,12 +157,13 @@ class MapViewer {
     private _extendPatternHiddenSourceId: string | null = null;
     private _eventBus: MoveEventBusLike | null = null;
 
-    constructor(svgElement: SVGSVGElement, zoomStore: ZoomStoreLike, appStore: AppStoreLike, selectionStore: SelectionStoreLike | null) {
+    constructor(svgElement: SVGSVGElement, zoomStore: ZoomStoreLike, appStore: AppStoreLike, selectionStore: SelectionStoreLike | null, decorationIconApi: DecorationIconApi | null = null) {
         this.svgElement = svgElement;
         this.zoomStore = zoomStore;
         this.appStore = appStore;
         this.selectionStore = selectionStore || null;
         this.appService = null;
+        this._decorationIconApi = decorationIconApi;
 
         // Cache rendered data to avoid recreating on zoom
         this.currentMap = null;
@@ -271,6 +288,11 @@ class MapViewer {
         // Cache state for zoom updates
         this.currentMap = state.map;
         this.currentLayers = state.layers || [];
+        if (state.mapType && state.mapType !== this._iconCatalog) {
+            this._iconCatalog = state.mapType;
+            this._decorationIcons.clear();
+            this._requestedDecorationIds.clear();
+        }
 
         // Only re-render tiles and boundary when the map itself changes.
         // Layer operations (add, visibility toggle) must not recreate tile
@@ -383,10 +405,13 @@ class MapViewer {
 
         // Clear decoration circle cache
         this.decorationCircles.clear();
+        this.decorationImages.clear();
 
         if (!Array.isArray(layers)) {
             return;
         }
+
+        this._requestDecorationIcons(layers);
 
         layers.forEach((layer, index) => {
             // Skip rendering hidden layers completely
@@ -418,6 +443,14 @@ class MapViewer {
                 if (decoration && decoration.position) {
                     const circle = this.createDecorationElement(decoration, layer.color);
                     if (circle) {
+                        const iconUrl = this._decorationDisplayMode === 'icon'
+                            ? this._decorationIcons.get(Number(decoration.id))
+                            : undefined;
+                        if (iconUrl) {
+                            const image = this._createDecorationImage(decoration, iconUrl);
+                            layerGroup.appendChild(image);
+                            this.decorationImages.set(decoration.uid, image);
+                        }
                         // Cache the circle for fast zoom updates
                         this.decorationCircles.set(decoration.uid, circle);
                         layerGroup.appendChild(circle);
@@ -430,7 +463,7 @@ class MapViewer {
     }
 
     /**
-     * Create a decoration circle element
+    * Create a decoration mark while preserving its circle hit target.
      * @param {Decoration} decoration - The decoration to render
      * @param {string} [layerColor] - The layer color to use for the fill
      * @returns {SVGCircleElement}
@@ -452,18 +485,32 @@ class MapViewer {
         const screenX = window.xZoom(decoration.position.x);
         const screenY = window.yZoom(decoration.position.y);
 
+        const iconUrl = this._decorationDisplayMode === 'icon'
+            ? this._decorationIcons.get(Number(decoration.id))
+            : undefined;
+        const isIcon = Boolean(iconUrl);
+        const radius = isIcon
+            ? DECORATION_ICON_SIZE / 2 + DECORATION_ICON_FRAME_PADDING
+            : this._decorationDisplayMode === 'large' ? 10 : 5;
+        const fill = isIcon ? 'transparent' : layerColor || decoration.color || '#00d4ff';
+        const stroke = isIcon ? layerColor || decoration.color || '#00d4ff' : '#000000';
         const circle = renderHelpers.createCircle(
             screenX,
             screenY,
-            5,
+            radius,
             {
-                fill: layerColor || decoration.color || '#00d4ff',
-                stroke: '#000000',
-                strokeWidth: 1,
+                fill,
+                stroke,
+                strokeWidth: isIcon ? 2 : 1,
                 className: `decoration decoration-point decoration-${decoration.uid}`,
-                opacity: 0.7
+                opacity: isIcon ? 1 : 0.7
             }
         );
+        circle.setAttribute('r', String(radius));
+        circle.setAttribute('fill', fill);
+        circle.setAttribute('stroke', stroke);
+        circle.setAttribute('stroke-width', isIcon ? '2' : '1');
+        circle.setAttribute('opacity', isIcon ? '1' : '0.7');
 
         circle.setAttribute('data-decoration-id', decoration.uid);
         circle.setAttribute('title', decoration.name || 'Decoration');
@@ -474,6 +521,56 @@ class MapViewer {
         }
 
         return circle;
+    }
+
+    _createDecorationImage(decoration: MapViewerDecoration, iconUrl: string): SVGImageElement {
+        const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        const x = window.xZoom!(decoration.position.x);
+        const y = window.yZoom!(decoration.position.y);
+        image.setAttribute('href', iconUrl);
+        image.setAttribute('x', String(x - DECORATION_ICON_SIZE / 2));
+        image.setAttribute('y', String(y - DECORATION_ICON_SIZE / 2));
+        image.setAttribute('width', String(DECORATION_ICON_SIZE));
+        image.setAttribute('height', String(DECORATION_ICON_SIZE));
+        image.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        image.setAttribute('pointer-events', 'none');
+        image.setAttribute('class', `decoration-icon decoration-${decoration.uid}`);
+        return image;
+    }
+
+    _requestDecorationIcons(layers: MapViewerLayer[]): void {
+        if (this._decorationDisplayMode !== 'icon' || !this._decorationIconApi) return;
+        const catalog = this._iconCatalog ?? MapType.Homestead;
+        const ids = [...new Set(layers
+            .filter(layer => layer.isVisible)
+            .flatMap(layer => this._getLayerDecorations(layer))
+            .map(decoration => Number(decoration.id))
+            .filter(id => Number.isSafeInteger(id) && !this._requestedDecorationIds.has(id)))];
+        if (ids.length === 0) return;
+
+        ids.forEach(id => this._requestedDecorationIds.add(id));
+        const loadIcons = catalog === MapType.GuildHall
+            ? this._decorationIconApi.getGuildUpgrades(ids)
+            : this._decorationIconApi.getHomesteadDecorations(ids, 'en');
+        void loadIcons.then(results => {
+            if (catalog !== (this._iconCatalog ?? MapType.Homestead)) return;
+            for (const decoration of results ?? []) {
+                if (decoration.icon) this._decorationIcons.set(decoration.id, decoration.icon);
+            }
+            if (this._decorationDisplayMode === 'icon') this.renderLayers(this.currentLayers);
+        }).catch(() => {
+            if (catalog === (this._iconCatalog ?? MapType.Homestead)) {
+                ids.forEach(id => this._requestedDecorationIds.delete(id));
+            }
+        });
+    }
+
+    setDecorationDisplayMode(mode: 'small' | 'large' | 'icon'): void {
+        if (mode !== 'small' && mode !== 'large' && mode !== 'icon') return;
+        if (this._decorationDisplayMode === mode) return;
+        this._decorationDisplayMode = mode;
+        this.renderLayers(this.currentLayers);
+        this.updateDecorationPositions(this.currentLayers);
     }
 
     /**
@@ -571,6 +668,11 @@ class MapViewer {
                         const screenY = yZoom(decoration.position.y) + (isMoving ? this._movePreviewOffset.y : 0);
                         circle.setAttribute('cx', String(screenX));
                         circle.setAttribute('cy', String(screenY));
+                        const image = this.decorationImages.get(decoration.uid);
+                        if (image) {
+                            image.setAttribute('x', String(screenX - DECORATION_ICON_SIZE / 2));
+                            image.setAttribute('y', String(screenY - DECORATION_ICON_SIZE / 2));
+                        }
                     }
                 }
             });
@@ -590,6 +692,7 @@ class MapViewer {
         domHelpers.empty(this._extendPatternPreviewGroup);
         this._moveCopyCircles.clear();
         this._extendPatternPreviews = [];
+        this.decorationImages.clear();
 
         // Clear caches
         this.currentMap = null;

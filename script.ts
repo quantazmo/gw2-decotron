@@ -59,6 +59,17 @@ async function setupRefactoredArchitecture() {
         console.log('[script.js]   ↳ Calling initializeApplication()...');
         appContext = await initializeApplication();
         console.log('[script.js] ✅ Refactored architecture initialized successfully');
+        decorationDisplayMode = appContext.settingsRepository?.load().decorationDisplayMode ?? 'small';
+        appContext.eventBus.subscribe('decoration:display-mode-changed', ({ mode }: { mode: 'small' | 'large' | 'icon' }) => {
+            if (mode !== 'small' && mode !== 'large' && mode !== 'icon') return;
+            decorationDisplayMode = mode;
+            mapViewer?.setDecorationDisplayMode(mode);
+            const settings = appContext?.settingsRepository?.load();
+            if (settings && settings.decorationDisplayMode !== mode) {
+                appContext.settingsRepository.save({ ...settings, decorationDisplayMode: mode });
+            }
+        });
+        appContext.eventBus.publish('decoration:display-mode-changed', { mode: decorationDisplayMode });
 
         // Subscribe to AppStore changes to update UI
         console.log('[script.js]   ↳ Subscribing to AppStore changes...');
@@ -137,6 +148,7 @@ let yZoomBase: LinearScale | null = null;
 
 // UI Component instances
 let mapViewer: any = null;
+let decorationDisplayMode: 'small' | 'large' | 'icon' = 'small';
 let layerPanel: any = null;
 let toolPanel: any = null;
 let fileDropZone: any = null;
@@ -1139,7 +1151,8 @@ function initializeMapElements() {
 
     // Create MapViewer instance if architecture is initialized
     if (architectureInitialized && appContext) {
-        mapViewer = new MapViewer(svgElement as SVGSVGElement, zoomStore as any, appContext.appStore as any, appContext.selectionStore as any);
+        mapViewer = new MapViewer(svgElement as SVGSVGElement, zoomStore as any, appContext.appStore as any, appContext.selectionStore as any, appContext.infrastructure?.getApiAdapter());
+        mapViewer.setDecorationDisplayMode(decorationDisplayMode);
         console.log('✓ MapViewer component initialized');
 
         // Wire appService and shared contextMenu to MapViewer for DnD and context menu

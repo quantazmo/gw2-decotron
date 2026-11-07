@@ -124,6 +124,23 @@ describe('RibbonToolbar', () => {
         expect(githubLink.parentElement.parentElement).toBe(groups[groups.length - 1]);
     });
 
+    test('decoration display dropdown is in View and publishes the selected mode', () => {
+        const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus);
+        const select = toolbar.getElement().querySelector('.ribbon-display-select');
+
+        expect(select.closest('[data-group="view"]')).not.toBeNull();
+        expect([...select.options].map(option => [option.value, option.textContent])).toEqual([
+            ['small', 'Small'],
+            ['large', 'Large'],
+            ['icon', 'Icon'],
+        ]);
+        select.value = 'icon';
+        select.dispatchEvent(new Event('change'));
+        expect(eventBus.publish).toHaveBeenCalledWith('decoration:display-mode-changed', { mode: 'icon' });
+        eventBus.publish('decoration:display-mode-changed', { mode: 'large' });
+        expect(select.value).toBe('large');
+    });
+
     test('Delete Selected is in Edit, disabled without a selection, and requests confirmation when selected', () => {
         const selectionStore = makeSelectionStore();
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
@@ -159,7 +176,7 @@ describe('RibbonToolbar', () => {
         const duplicatorButton = el.querySelector('[data-action="ribbon-extend-decorations"]');
         const fillButton = el.querySelector('[data-action="ribbon-fill-decorations"]');
 
-        expect(moveButton.title).toBe('Move Selected');
+        expect(moveButton.title).toBe('Copy/Move Selected');
         expect(rotateButton.title).toBe('Rotate Selected');
         expect(rotateButton.hidden).toBe(true);
         expect(duplicatorButton.title).toContain('1 or 2 decorations of the same type');

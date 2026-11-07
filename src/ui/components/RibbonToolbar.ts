@@ -137,6 +137,7 @@ export class RibbonToolbar {
                 btn => { this._fitMapBtn = btn; }),
             this._makeBtn('Fit Selected', 'ribbon-fit-selected', () => this._onFitSelected(),
                 btn => { this._fitSelectedBtn = btn; }),
+            this._makeDecorationDisplaySelect(),
         ]));
 
         toolbar.appendChild(this._createGroup('Edit', [
@@ -158,9 +159,9 @@ export class RibbonToolbar {
         ]));
 
         const createButtons = [
-            this._makeBtn('Move Selected', 'ribbon-move-selected', () => this._onMoveSelected(), btn => {
+            this._makeBtn('Copy/Move Selected', 'ribbon-move-selected', () => this._onMoveSelected(), btn => {
                 this._moveSelectedBtn = btn;
-                btn.title = 'Move Selected';
+                btn.title = 'Copy/Move Selected';
             }),
             this._makeBtn('Rotate Selected', 'ribbon-rotate-selected', () => window.alert('Coming soon!'), btn => {
                 this._rotateSelectedBtn = btn;
@@ -315,6 +316,32 @@ export class RibbonToolbar {
         link.innerHTML = this._getIcon(action);
         link.dataset.action = action;
         return link;
+    }
+
+    _makeDecorationDisplaySelect(): HTMLSelectElement {
+        const select = document.createElement('select');
+        select.className = 'ribbon-display-select';
+        select.title = 'Decoration display';
+        select.setAttribute('aria-label', 'Decoration display');
+        [
+            ['small', 'Small'],
+            ['large', 'Large'],
+            ['icon', 'Icon'],
+        ].forEach(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            select.appendChild(option);
+        });
+        select.addEventListener('change', () => {
+            this._eventBus?.publish('decoration:display-mode-changed', { mode: select.value });
+        });
+        const unsubscribe = this._eventBus?.subscribe<{ mode: 'small' | 'large' | 'icon' }>(
+            'decoration:display-mode-changed',
+            ({ mode }) => { select.value = mode; }
+        );
+        if (unsubscribe) this._unsubscribers.push(unsubscribe);
+        return select;
     }
 
     /**

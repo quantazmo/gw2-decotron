@@ -49,7 +49,7 @@ describe('SettingsRepository — error path coverage', () => {
             };
             const repo = new SettingsRepository(throwingStorage);
             const result = repo.load();
-            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees' });
+            expect(result).toEqual({ apiKey: '', theme: 'system', angleUnit: 'degrees', decorationDisplayMode: 'small' });
         });
     });
 });

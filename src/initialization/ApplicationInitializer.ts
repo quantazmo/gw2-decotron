@@ -381,8 +381,8 @@ export async function initializeApplication(): Promise<ApplicationContext> {
                     decoration.rotX = dto.rotX || 0;
                     decoration.rotZ = dto.rotZ || 0;
                     homesteadLayout.addDecorationToLayer(targetLayerId, decoration);
-                    appStoreInstance.dispatch('ADD_DECORATION', { layerId: targetLayerId, decoration });
                 }
+                appStoreInstance.dispatch('SET_DIRTY', true);
             }
         },
         MergeLayerCommand: {

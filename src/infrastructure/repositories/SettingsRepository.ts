@@ -3,7 +3,7 @@
  * Persists and restores application settings to/from localStorage.
  *
  * Storage format:
- *   { "version": 1, "apiKey": "", "theme": "system", "angleUnit": "degrees" }
+ *   { "version": 1, "apiKey": "", "theme": "system", "angleUnit": "degrees", "decorationDisplayMode": "small" }
  *
  * Falls back to default settings on any of:
  *   - Missing key
@@ -21,12 +21,14 @@ interface AppSettings {
     apiKey: string;
     theme: Theme;
     angleUnit: 'degrees' | 'radians';
+    decorationDisplayMode: 'small' | 'large' | 'icon';
 }
 
 interface SettingsInput {
     apiKey?: string | null;
     theme?: string | null;
     angleUnit?: string | null;
+    decorationDisplayMode?: string | null;
 }
 
 interface StorageLike {
@@ -39,6 +41,7 @@ const DEFAULT_SETTINGS: Readonly<AppSettings> = Object.freeze({
     apiKey: '',
     theme: 'system',
     angleUnit: 'degrees',
+    decorationDisplayMode: 'small',
 });
 
 export class SettingsRepository {
@@ -65,6 +68,10 @@ export class SettingsRepository {
                 apiKey: settings.apiKey ?? '',
                 theme: settings.theme ?? 'system',
                 angleUnit: settings.angleUnit === 'radians' ? 'radians' : 'degrees',
+                decorationDisplayMode: settings.decorationDisplayMode === 'small' ||
+                    settings.decorationDisplayMode === 'large' || settings.decorationDisplayMode === 'icon'
+                    ? settings.decorationDisplayMode
+                    : this.load().decorationDisplayMode,
             };
             this._storage.setItem(this._key, JSON.stringify(doc));
         } catch (err) {
@@ -97,6 +104,10 @@ export class SettingsRepository {
                 angleUnit: doc.angleUnit === 'degrees' || doc.angleUnit === 'radians'
                     ? doc.angleUnit
                     : 'degrees',
+                decorationDisplayMode: doc.decorationDisplayMode === 'small' ||
+                    doc.decorationDisplayMode === 'large' || doc.decorationDisplayMode === 'icon'
+                    ? doc.decorationDisplayMode
+                    : 'small',
             };
         } catch (err) {
             console.warn('[SettingsRepository] Failed to load settings, using defaults:', err instanceof Error ? err.message : String(err));

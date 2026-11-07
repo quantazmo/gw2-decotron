@@ -32,6 +32,10 @@ test('extends one selected decoration using the configured position step', async
     await page.locator('.extend-pattern-panel-content .create-panel-save').click();
 
     await expect(decorations).toHaveCount(countBefore + 1, { timeout: 10_000 });
+    await page.locator('[data-action="ribbon-undo"]').click();
+    await expect(decorations).toHaveCount(countBefore);
+    await page.locator('[data-action="ribbon-redo"]').click();
+    await expect(decorations).toHaveCount(countBefore + 1);
 });
 
 test('extends two selected decorations of the same type', async ({ page }) => {
@@ -146,4 +150,8 @@ test('fills evenly spaced decorations between two selected decorations', async (
     await expect(decorations).toHaveCount(countBefore + 3, { timeout: 10_000 });
     await expect(firstCircle).toHaveAttribute('cx', String(firstX));
     await expect(secondCircle).toHaveAttribute('cx', String(secondX));
+    await page.locator('[data-action="ribbon-undo"]').click();
+    await expect(decorations).toHaveCount(countBefore);
+    await page.locator('[data-action="ribbon-redo"]').click();
+    await expect(decorations).toHaveCount(countBefore + 3);
 });
