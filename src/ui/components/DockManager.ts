@@ -28,6 +28,11 @@ import type { DockPanelLayoutStore } from '../stores/DockPanelLayoutStore.js';
 const RESIZE_DEBOUNCE_MS = 150;
 const CREATE_PANEL_WIDTH_KEY = 'gw2-decoration-editor-create-panel-width';
 
+type ExtendPatternValues = {
+    position: { x: number; y: number; z: number };
+    rotation: { x: number; y: number; z: number };
+};
+
 const PANEL_LABELS: Record<string, string> = {
     map: 'Map',
     layers: 'Layers',
@@ -53,11 +58,15 @@ export class DockManager {
     private _resizeTimer: ReturnType<typeof setTimeout> | null;
     private _currentMapName: string | null;
     private _moveModeActive: boolean;
+    private _extendPatternActive: boolean;
+    private _fillPatternActive: boolean;
     private _createMapRatio: number | null;
     private _unsubscribeMoveMode: (() => void) | null;
     private _moveSelectedPosition: { x: number; y: number; z: number } | null;
     private _moveAsCopy: boolean;
     private _moveCopyTargetLayerId: string | null;
+    private _fillPatternStart: ExtendPatternValues;
+    private _fillPatternEnd: ExtendPatternValues;
 
     /**
      * @param {HTMLElement} rootElement     Container div (#dock-manager-root)
@@ -100,11 +109,15 @@ export class DockManager {
         this._resizeTimer = null;
         this._currentMapName = null;
         this._moveModeActive = false;
+        this._extendPatternActive = false;
+        this._fillPatternActive = false;
         this._createMapRatio = null;
         this._unsubscribeMoveMode = null;
         this._moveSelectedPosition = null;
         this._moveAsCopy = false;
         this._moveCopyTargetLayerId = null;
+        this._fillPatternStart = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } };
+        this._fillPatternEnd = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } };
     }
 
     /**
@@ -125,6 +138,7 @@ export class DockManager {
             const unsubs = [
                 this._eventBus.subscribe('move:selected-start-requested', () => {
                     this._moveModeActive = true;
+                    this._setMoveSelectedHintVisible(true);
                     this._moveSelectedPosition = null;
                     this._moveAsCopy = false;
                     const state = this._appStore?.getState();
@@ -134,10 +148,12 @@ export class DockManager {
                 }),
                 this._eventBus.subscribe('move:selected-save-requested', () => {
                     this._moveModeActive = false;
+                    this._setMoveSelectedHintVisible(false);
                     this._render();
                 }),
                 this._eventBus.subscribe('move:selected-cancel-requested', () => {
                     this._moveModeActive = false;
+                    this._setMoveSelectedHintVisible(false);
                     this._render();
                 }),
                 this._eventBus.subscribe<{ x: number; y: number; z: number }>('move:selected-position-changed', position => {
@@ -146,6 +162,39 @@ export class DockManager {
                 }),
                 this._eventBus.subscribe<boolean>('move:selected-copy-changed', enabled => {
                     this._moveAsCopy = enabled;
+                }),
+                this._eventBus.subscribe('extend:pattern-start-requested', () => {
+                    this._extendPatternActive = true;
+                    this._moveModeActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe<{ start: ExtendPatternValues; step: ExtendPatternValues }>('extend:pattern-seed-values-changed', values => {
+                    this._syncExtendPatternInputs(values);
+                }),
+                this._eventBus.subscribe('extend:pattern-completed', () => {
+                    this._extendPatternActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe('extend:pattern-cancel-requested', () => {
+                    this._extendPatternActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe('fill:pattern-start-requested', () => {
+                    this._fillPatternActive = true;
+                    this._moveModeActive = false;
+                    this._extendPatternActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe<{ start: ExtendPatternValues; end: ExtendPatternValues }>('fill:pattern-seed-values-changed', values => {
+                    this._syncFillPatternInputs(values);
+                }),
+                this._eventBus.subscribe('fill:pattern-completed', () => {
+                    this._fillPatternActive = false;
+                    this._render();
+                }),
+                this._eventBus.subscribe('fill:pattern-cancel-requested', () => {
+                    this._fillPatternActive = false;
+                    this._render();
                 })
             ];
             this._unsubscribeMoveMode = () => unsubs.forEach(unsubscribe => unsubscribe());
@@ -212,6 +261,11 @@ export class DockManager {
         }
     }
 
+    private _setMoveSelectedHintVisible(visible: boolean): void {
+        const hint = this.panelContentMap.map?.querySelector<HTMLElement>('.move-selected-hint');
+        if (hint) hint.hidden = !visible;
+    }
+
     /**
      * Re-render the layout tree inside _treeContainer.
      * Only the tree container is cleared; ribbon and reset button persist.
@@ -224,7 +278,7 @@ export class DockManager {
         }
 
         const layout = this.layoutStore.getState();
-        const rendered = this._moveModeActive
+        const rendered = this._moveModeActive || this._extendPatternActive || this._fillPatternActive
             ? this._renderMoveMode(layout.tree)
             : this._renderNode(layout.tree, []);
         container.appendChild(rendered);
@@ -292,7 +346,12 @@ export class DockManager {
         const label = (node.panelId === 'map' && this._currentMapName)
             ? `${baseLabel} — ${this._currentMapName}`
             : baseLabel;
-        const region = new DockRegion(node.panelId, contentEl, label);
+        const panelLabel = node.panelId === 'create' && this._extendPatternActive
+            ? 'Extend Decoration Pattern'
+            : node.panelId === 'create' && this._fillPatternActive
+                ? 'Fill Decoration Pattern'
+                : label;
+        const region = new DockRegion(node.panelId, contentEl, panelLabel);
 
         const wrapper = document.createElement('div');
         wrapper.className = 'panel-wrapper';
@@ -302,6 +361,8 @@ export class DockManager {
     }
 
     _createPanelContent(): HTMLElement {
+        if (this._extendPatternActive) return this._createExtendPatternPanelContent();
+        if (this._fillPatternActive) return this._createFillPatternPanelContent();
         const content = document.createElement('div');
         content.className = 'create-panel-content';
         const message = document.createElement('p');
@@ -389,6 +450,318 @@ export class DockManager {
         actions.append(save, cancel);
         content.append(message, fields, copyLabel, targetControl, actions);
         return content;
+    }
+
+    _createExtendPatternPanelContent(): HTMLElement {
+        const content = document.createElement('div');
+        content.className = 'create-panel-content extend-pattern-panel-content';
+
+        const methodLabel = document.createElement('label');
+        methodLabel.className = 'extend-pattern-method-field';
+        const methodCaption = document.createElement('span');
+        methodCaption.textContent = 'Method';
+        const methodSelect = document.createElement('select');
+        methodSelect.className = 'extend-pattern-method-select';
+        methodSelect.setAttribute('aria-label', 'Method');
+        const linearOption = document.createElement('option');
+        linearOption.value = 'linear';
+        linearOption.textContent = 'Linear';
+        methodSelect.appendChild(linearOption);
+        methodLabel.append(methodCaption, methodSelect);
+
+        const countLabel = document.createElement('label');
+        countLabel.className = 'extend-pattern-count-field';
+        const countCaption = document.createElement('span');
+        countCaption.textContent = 'Count';
+        const countInput = document.createElement('input');
+        countInput.type = 'number';
+        countInput.min = '1';
+        countInput.step = '1';
+        countInput.value = '1';
+        countInput.className = 'extend-pattern-count-input';
+        countInput.setAttribute('aria-label', 'Count');
+        countLabel.append(countCaption, countInput);
+
+        const swapStartButton = document.createElement('button');
+        swapStartButton.type = 'button';
+        swapStartButton.className = 'extend-pattern-swap-start-button';
+        swapStartButton.textContent = 'Swap Start Decoration';
+        swapStartButton.setAttribute('aria-pressed', 'false');
+        swapStartButton.hidden = (this._selectionStore?.getSelectedIds().length ?? 0) < 2;
+        let swapDirection = false;
+
+        const fields = document.createElement('div');
+        fields.className = 'extend-pattern-field-grid';
+        const blankHeader = document.createElement('span');
+        blankHeader.className = 'extend-pattern-grid-header';
+        const startHeader = document.createElement('span');
+        startHeader.className = 'extend-pattern-grid-header';
+        startHeader.textContent = 'Start';
+        const offsetHeader = document.createElement('span');
+        offsetHeader.className = 'extend-pattern-grid-header';
+        offsetHeader.textContent = 'Offset';
+        fields.append(blankHeader, startHeader, offsetHeader);
+
+        const fieldRows = [
+            { label: 'Position X', group: 'position', axis: 'x' },
+            { label: 'Position Y', group: 'position', axis: 'y' },
+            { label: 'Position Z', group: 'position', axis: 'z' },
+            { label: 'Rotation X', group: 'rotation', axis: 'x' },
+            { label: 'Rotation Y', group: 'rotation', axis: 'y' },
+            { label: 'Rotation Z', group: 'rotation', axis: 'z' }
+        ] as const;
+        for (const row of fieldRows) {
+            const rowLabel = document.createElement('span');
+            rowLabel.className = 'extend-pattern-field-label';
+            rowLabel.textContent = row.label;
+            fields.appendChild(rowLabel);
+            for (const role of ['start', 'step'] as const) {
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = 'any';
+                input.className = 'extend-pattern-value-input';
+                input.dataset.role = role;
+                input.dataset.group = row.group;
+                input.dataset.axis = row.axis;
+                input.setAttribute('aria-label', `${role === 'step' ? 'Offset' : 'Start'} ${row.label.toLowerCase()}`);
+                input.readOnly = role === 'start';
+                input.value = '0';
+                fields.appendChild(input);
+            }
+        }
+
+        const readValues = (role: 'start' | 'step'): ExtendPatternValues => {
+            const read = (group: 'position' | 'rotation', axis: 'x' | 'y' | 'z') =>
+                fields.querySelector<HTMLInputElement>(`[data-role="${role}"][data-group="${group}"][data-axis="${axis}"]`)!.valueAsNumber;
+            return {
+                position: { x: read('position', 'x'), y: read('position', 'y'), z: read('position', 'z') },
+                rotation: { x: read('rotation', 'x'), y: read('rotation', 'y'), z: read('rotation', 'z') }
+            };
+        };
+        const writeValues = (role: 'start' | 'step', values: ExtendPatternValues): void => {
+            for (const group of ['position', 'rotation'] as const) {
+                for (const axis of ['x', 'y', 'z'] as const) {
+                    const input = fields.querySelector<HTMLInputElement>(`[data-role="${role}"][data-group="${group}"][data-axis="${axis}"]`)!;
+                    input.value = String(values[group][axis]);
+                }
+            }
+        };
+
+        const publishPreviewUpdate = () => {
+            const count = Number(countInput.value);
+            if (!Number.isInteger(count) || count < 1) return;
+            const start = readValues('start');
+            const step = readValues('step');
+            const numbers = [...Object.values(start.position), ...Object.values(start.rotation), ...Object.values(step.position), ...Object.values(step.rotation)];
+            if (numbers.some(value => !Number.isFinite(value))) return;
+            this._eventBus?.publish('extend:pattern-options-changed', {
+                method: methodSelect.value,
+                count,
+                swapDirection,
+                start,
+                step
+            });
+        };
+        fields.addEventListener('input', publishPreviewUpdate);
+        countInput.addEventListener('input', publishPreviewUpdate);
+        swapStartButton.addEventListener('click', () => {
+            const start = readValues('start');
+            const step = readValues('step');
+            for (const group of ['position', 'rotation'] as const) {
+                for (const axis of ['x', 'y', 'z'] as const) {
+                    start[group][axis] += step[group][axis];
+                    const currentStep = step[group][axis];
+                    step[group][axis] = -currentStep;
+                }
+            }
+            writeValues('start', start);
+            writeValues('step', step);
+            swapDirection = !swapDirection;
+            swapStartButton.setAttribute('aria-pressed', String(swapDirection));
+            publishPreviewUpdate();
+        });
+        methodSelect.addEventListener('change', publishPreviewUpdate);
+
+        const actions = document.createElement('div');
+        actions.className = 'create-panel-actions';
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'create-panel-save';
+        save.textContent = 'Save';
+        save.addEventListener('click', () => {
+            const count = Number(countInput.value);
+            if (!Number.isInteger(count) || count < 1) {
+                countInput.value = '1';
+                countInput.focus();
+                return;
+            }
+            const start = readValues('start');
+            const step = readValues('step');
+            const numbers = [...Object.values(start.position), ...Object.values(start.rotation), ...Object.values(step.position), ...Object.values(step.rotation)];
+            if (numbers.some(value => !Number.isFinite(value))) return;
+            this._eventBus?.publish('extend:pattern-save-requested', {
+                method: methodSelect.value,
+                count,
+                swapDirection,
+                start,
+                step
+            });
+        });
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'create-panel-cancel';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', () => this._eventBus?.publish('extend:pattern-cancel-requested'));
+        actions.append(save, cancel);
+        content.append(methodLabel, countLabel, fields, swapStartButton, actions);
+        return content;
+    }
+
+    _createFillPatternPanelContent(): HTMLElement {
+        const content = document.createElement('div');
+        content.className = 'create-panel-content extend-pattern-panel-content';
+
+        const methodLabel = document.createElement('label');
+        methodLabel.className = 'extend-pattern-method-field fill-pattern-method-field';
+        const methodCaption = document.createElement('span');
+        methodCaption.textContent = 'Method';
+        const methodSelect = document.createElement('select');
+        methodSelect.className = 'extend-pattern-method-select fill-pattern-method-select';
+        methodSelect.setAttribute('aria-label', 'Method');
+        const linearOption = document.createElement('option');
+        linearOption.value = 'linear';
+        linearOption.textContent = 'Linear';
+        methodSelect.appendChild(linearOption);
+        methodLabel.append(methodCaption, methodSelect);
+
+        const countLabel = document.createElement('label');
+        countLabel.className = 'extend-pattern-count-field';
+        const countCaption = document.createElement('span');
+        countCaption.textContent = 'Count';
+        const countInput = document.createElement('input');
+        countInput.type = 'number';
+        countInput.min = '1';
+        countInput.step = '1';
+        countInput.value = '1';
+        countInput.className = 'extend-pattern-count-input fill-pattern-count-input';
+        countInput.setAttribute('aria-label', 'Count');
+        countLabel.append(countCaption, countInput);
+
+        const fields = document.createElement('div');
+        fields.className = 'extend-pattern-field-grid';
+        const blankHeader = document.createElement('span');
+        blankHeader.className = 'extend-pattern-grid-header';
+        const startHeader = document.createElement('span');
+        startHeader.className = 'extend-pattern-grid-header';
+        startHeader.textContent = 'Start';
+        const offsetHeader = document.createElement('span');
+        offsetHeader.className = 'extend-pattern-grid-header';
+        offsetHeader.textContent = 'Offset';
+        fields.append(blankHeader, startHeader, offsetHeader);
+
+        const fieldRows = [
+            { label: 'Position X', group: 'position', axis: 'x' },
+            { label: 'Position Y', group: 'position', axis: 'y' },
+            { label: 'Position Z', group: 'position', axis: 'z' },
+            { label: 'Rotation X', group: 'rotation', axis: 'x' },
+            { label: 'Rotation Y', group: 'rotation', axis: 'y' },
+            { label: 'Rotation Z', group: 'rotation', axis: 'z' }
+        ] as const;
+        for (const row of fieldRows) {
+            const rowLabel = document.createElement('span');
+            rowLabel.className = 'extend-pattern-field-label';
+            rowLabel.textContent = row.label;
+            fields.appendChild(rowLabel);
+            for (const role of ['start', 'step'] as const) {
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = 'any';
+                input.className = 'extend-pattern-value-input';
+                input.dataset.role = role;
+                input.dataset.group = row.group;
+                input.dataset.axis = row.axis;
+                input.setAttribute('aria-label', `${role === 'step' ? 'Offset' : 'Start'} ${row.label.toLowerCase()}`);
+                input.readOnly = true;
+                input.value = '0';
+                fields.appendChild(input);
+            }
+        }
+
+        const updateFields = () => {
+            const count = Number(countInput.value);
+            const divisor = Number.isInteger(count) && count > 0 ? count + 1 : 0;
+            for (const group of ['position', 'rotation'] as const) {
+                for (const axis of ['x', 'y', 'z'] as const) {
+                    const startInput = fields.querySelector<HTMLInputElement>(`[data-role="start"][data-group="${group}"][data-axis="${axis}"]`)!;
+                    const stepInput = fields.querySelector<HTMLInputElement>(`[data-role="step"][data-group="${group}"][data-axis="${axis}"]`)!;
+                    startInput.value = String(this._fillPatternStart[group][axis]);
+                    stepInput.value = divisor ? String((this._fillPatternEnd[group][axis] - this._fillPatternStart[group][axis]) / divisor) : '';
+                }
+            }
+        };
+        const publishPreviewUpdate = () => {
+            const count = Number(countInput.value);
+            if (!Number.isInteger(count) || count < 1) return;
+            updateFields();
+            this._eventBus?.publish('fill:pattern-options-changed', { count });
+        };
+        countInput.addEventListener('input', publishPreviewUpdate);
+
+        const actions = document.createElement('div');
+        actions.className = 'create-panel-actions';
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'create-panel-save';
+        save.textContent = 'Save';
+        save.addEventListener('click', () => {
+            const count = Number(countInput.value);
+            if (!Number.isInteger(count) || count < 1) {
+                countInput.value = '1';
+                updateFields();
+                countInput.focus();
+                return;
+            }
+            this._eventBus?.publish('fill:pattern-save-requested', { count });
+        });
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'create-panel-cancel';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', () => this._eventBus?.publish('fill:pattern-cancel-requested'));
+        actions.append(save, cancel);
+        content.append(methodLabel, countLabel, fields, actions);
+        return content;
+    }
+
+    _syncFillPatternInputs(values: { start: ExtendPatternValues; end: ExtendPatternValues }): void {
+        const fields = this._treeContainer?.querySelector('.extend-pattern-field-grid');
+        const countInput = this._treeContainer?.querySelector<HTMLInputElement>('.fill-pattern-count-input');
+        if (!fields || !countInput) return;
+        const count = Number(countInput.value);
+        const divisor = Number.isInteger(count) && count > 0 ? count + 1 : 0;
+        this._fillPatternStart = values.start;
+        this._fillPatternEnd = values.end;
+        for (const group of ['position', 'rotation'] as const) {
+            for (const axis of ['x', 'y', 'z'] as const) {
+                const startInput = fields.querySelector<HTMLInputElement>(`[data-role="start"][data-group="${group}"][data-axis="${axis}"]`);
+                const stepInput = fields.querySelector<HTMLInputElement>(`[data-role="step"][data-group="${group}"][data-axis="${axis}"]`);
+                if (startInput) startInput.value = String(values.start[group][axis]);
+                if (stepInput) stepInput.value = divisor ? String((values.end[group][axis] - values.start[group][axis]) / divisor) : '';
+            }
+        }
+    }
+
+    _syncExtendPatternInputs(values: { start: ExtendPatternValues; step: ExtendPatternValues }): void {
+        const fields = this._treeContainer?.querySelector('.extend-pattern-field-grid');
+        if (!fields) return;
+        for (const role of ['start', 'step'] as const) {
+            for (const group of ['position', 'rotation'] as const) {
+                for (const axis of ['x', 'y', 'z'] as const) {
+                    const input = fields.querySelector<HTMLInputElement>(`[data-role="${role}"][data-group="${group}"][data-axis="${axis}"]`);
+                    if (input) input.value = String(values[role][group][axis]);
+                }
+            }
+        }
     }
 
     _syncMovePositionInputs(): void {

@@ -399,13 +399,17 @@ let globalZoomHandler: {
 } | null = null;
 let moveSelectedActive = false;
 let moveSelectedPreviousTransform: ZoomTransform | null = null;
+let extendPatternActive = false;
+let fillPatternActive = false;
+const patternInteractionActive = () => extendPatternActive || fillPatternActive;
+let extendPatternPreviousTransform: ZoomTransform | null = null;
 
 /**
  * Reset zoom and pan using the refactored zoom handler
  */
 function resetZoomRefactored() {
     try {
-        if (moveSelectedActive) return;
+        if (moveSelectedActive || patternInteractionActive()) return;
         // Reset the zoom handler (it manages the actual zoom/pan)
         if (globalZoomHandler) {
             globalZoomHandler.reset();
@@ -438,7 +442,7 @@ function resetZoomRefactored() {
  * Recalculates scale domains and updates all rendered elements.
  */
 function resetZoom() {
-    if (moveSelectedActive || !isMapLoaded()) return;
+    if (moveSelectedActive || patternInteractionActive() || !isMapLoaded()) return;
 
     // Find min/max coordinates from boundary polygon points
     const currentMap = getMap();
@@ -1019,7 +1023,8 @@ function initializeMapElements() {
     chartContainer.innerHTML = `
         <svg>
             <g></g>
-        </svg>`;
+        </svg>
+        <div class="move-selected-hint" role="status" hidden>Use the mouse to pan the map and move the selected decorations.</div>`;
 
     // set the dimensions and margins of the graph
     const { width, height } = getChartContainerDimensions();
@@ -1326,10 +1331,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!appContext) return;
 
         appContext.eventBus.subscribe('zoom:fit-requested', () => {
-            if (!moveSelectedActive && isMapLoaded()) resetZoom();
+            if (!moveSelectedActive && !patternInteractionActive() && isMapLoaded()) resetZoom();
         });
         appContext.eventBus.subscribe('zoom:fit-selected-requested', () => {
-            if (!globalZoomHandler || !appContext || !xZoomBase || !yZoomBase || moveSelectedActive) return;
+            if (!globalZoomHandler || !appContext || !xZoomBase || !yZoomBase || moveSelectedActive || patternInteractionActive()) return;
 
             const selectedIds = new Set(appContext.selectionStore.getSelectedIds());
             if (selectedIds.size === 0) return;
@@ -1368,7 +1373,7 @@ document.addEventListener('DOMContentLoaded', function () {
             globalZoomHandler.setTransform({ k: fit.zoom, x: fit.pan.x, y: fit.pan.y });
         });
         appContext.eventBus.subscribe('move:selected-start-requested', () => {
-            if (!globalZoomHandler || !appContext || moveSelectedActive) return;
+            if (!globalZoomHandler || !appContext || moveSelectedActive || patternInteractionActive()) return;
             moveSelectedPreviousTransform = globalZoomHandler.getTransform();
             appContext.eventBus.publish('zoom:fit-selected-requested');
             moveSelectedActive = true;
@@ -1400,8 +1405,324 @@ document.addEventListener('DOMContentLoaded', function () {
             if (moveSelectedPreviousTransform) globalZoomHandler?.setTransform(moveSelectedPreviousTransform);
             moveSelectedPreviousTransform = null;
         });
+        type ExtendPatternValues = {
+            position: { x: number; y: number; z: number };
+            rotation: { x: number; y: number; z: number };
+        };
+        type ExtendPatternOptions = {
+            method: string;
+            count: number;
+            swapDirection: boolean;
+            start: ExtendPatternValues;
+            step: ExtendPatternValues;
+        };
+        const getSelectedPattern = () => {
+            if (!appContext) return null;
+            const selectedIds = appContext.selectionStore.getSelectedIds();
+            if (selectedIds.length < 1 || selectedIds.length > 2) return null;
+            const layers = appContext.appStore.getState().layers ?? [];
+            const selected = selectedIds.map(decorationId => {
+                for (const layer of layers as any[]) {
+                    const decorations = typeof layer.getAllDecorations === 'function'
+                        ? layer.getAllDecorations()
+                        : layer.decorations instanceof Map
+                            ? Array.from(layer.decorations.values())
+                            : layer.decorations ?? [];
+                    const decoration = typeof layer.getDecoration === 'function'
+                        ? layer.getDecoration(decorationId)
+                        : decorations.find((item: any) => item.uid === decorationId);
+                    if (decoration) return { layer, decoration };
+                }
+                return null;
+            });
+            if (selected.some(item => !item?.decoration.position) ||
+                selected.some(item => item?.decoration.id !== selected[0]?.decoration.id)) return null;
+            return selected as Array<{ layer: any; decoration: any }>;
+        };
+        const buildExtendPatternCopies = (options: ExtendPatternOptions) => {
+            const selected = getSelectedPattern();
+            if (!selected) return null;
+            const source = selected.length === 2 && options.swapDirection ? selected[0] : selected[selected.length - 1];
+            const targetLayer = source.layer;
+            const copies = Array.from({ length: options.count }, (_, index) => {
+                const step = selected.length + index;
+                return {
+                    decorationId: source.decoration.uid,
+                    name: source.decoration.name,
+                    color: targetLayer.color,
+                    position: {
+                        x: options.start.position.x + options.step.position.x * step,
+                        y: options.start.position.y + options.step.position.y * step,
+                        z: options.start.position.z + options.step.position.z * step
+                    },
+                    rotation: options.start.rotation.y + options.step.rotation.y * step,
+                    rotX: options.start.rotation.x + options.step.rotation.x * step,
+                    rotZ: options.start.rotation.z + options.step.rotation.z * step
+                };
+            });
+            return { selected, targetLayer, copies };
+        };
+        const fitPatternToScreen = (worldPoints: Array<{ x: number; y: number }>) => {
+            if (!globalZoomHandler || !xZoomBase || !yZoomBase) return;
+            const points = worldPoints.map(position => ({
+                x: xZoomBase!(position.x),
+                y: yZoomBase!(position.y)
+            })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+            if (points.length === 0) return;
+
+            const minX = Math.min(...points.map(point => point.x));
+            const maxX = Math.max(...points.map(point => point.x));
+            const minY = Math.min(...points.map(point => point.y));
+            const maxY = Math.max(...points.map(point => point.y));
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const width = Math.max(maxX - minX, 40);
+            const height = Math.max(maxY - minY, 40);
+            const fit = ZoomCalculationService.calculateZoomToFitArea({
+                min: { x: centerX - width / 2, y: centerY - height / 2 },
+                width,
+                height
+            }, getChartContainerDimensions());
+            globalZoomHandler.setTransform({ k: fit.zoom, x: fit.pan.x, y: fit.pan.y });
+        };
+        const updateExtendPatternPreview = (options: ExtendPatternOptions) => {
+            if (!globalZoomHandler || !xZoomBase || !yZoomBase || options.method && options.method !== 'linear') return;
+            const pattern = buildExtendPatternCopies(options);
+            if (!pattern) {
+                mapViewer?.setExtendPatternPreview([]);
+                return;
+            }
+
+            const previews = pattern.copies.map((copy, index) => ({
+                uid: `extend-pattern-preview-${index}`,
+                name: copy.name,
+                color: copy.color,
+                position: copy.position
+            }));
+            if (pattern.selected.length === 2) {
+                const movingSeed = options.swapDirection ? pattern.selected[0] : pattern.selected[1];
+                previews.unshift({
+                    uid: 'extend-pattern-moved-seed-preview',
+                    name: movingSeed.decoration.name,
+                    color: movingSeed.layer.color,
+                    sourceDecorationId: movingSeed.decoration.uid,
+                    position: {
+                        x: options.start.position.x + options.step.position.x,
+                        y: options.start.position.y + options.step.position.y,
+                        z: options.start.position.z + options.step.position.z
+                    }
+                });
+            }
+            const movedSeedPosition = pattern.selected.length === 2 ? {
+                x: options.start.position.x + options.step.position.x,
+                y: options.start.position.y + options.step.position.y
+            } : null;
+            const worldPoints = [
+                ...pattern.selected.map(item => item.decoration.position),
+                ...(movedSeedPosition ? [movedSeedPosition] : []),
+                ...pattern.copies.map(copy => copy.position)
+            ];
+            mapViewer?.setExtendPatternPreview(previews, [
+                options.start.position,
+                ...(movedSeedPosition ? [movedSeedPosition] : []),
+                ...pattern.copies.map(copy => copy.position)
+            ]);
+            fitPatternToScreen(worldPoints);
+        };
+
+        appContext.eventBus.subscribe('extend:pattern-start-requested', () => {
+            const selected = getSelectedPattern();
+            if (!globalZoomHandler || !appContext || moveSelectedActive || patternInteractionActive() || !selected) return;
+            const first = selected[0].decoration;
+            const second = selected[1]?.decoration;
+            const start: ExtendPatternValues = {
+                position: { x: first.position.x, y: first.position.y, z: first.position.z ?? 0 },
+                rotation: { x: first.rotX ?? 0, y: first.rotation ?? 0, z: first.rotZ ?? 0 }
+            };
+            const step: ExtendPatternValues = {
+                position: {
+                    x: second ? second.position.x - first.position.x : 0,
+                    y: second ? second.position.y - first.position.y : 0,
+                    z: second ? (second.position.z ?? 0) - (first.position.z ?? 0) : 0
+                },
+                rotation: {
+                    x: second ? (second.rotX ?? 0) - (first.rotX ?? 0) : 0,
+                    y: second ? (second.rotation ?? 0) - (first.rotation ?? 0) : 0,
+                    z: second ? (second.rotZ ?? 0) - (first.rotZ ?? 0) : 0
+                }
+            };
+            extendPatternPreviousTransform = globalZoomHandler.getTransform();
+            extendPatternActive = true;
+            globalZoomHandler.setInteractionsEnabled(false);
+            const options: ExtendPatternOptions = { method: 'linear', count: 1, swapDirection: false, start, step };
+            updateExtendPatternPreview(options);
+            appContext.eventBus.publish('extend:pattern-seed-values-changed', { start, step });
+        });
+        appContext.eventBus.subscribe<ExtendPatternOptions>('extend:pattern-options-changed', options => {
+            if (!extendPatternActive || !Number.isInteger(options?.count) || options.count < 1) return;
+            updateExtendPatternPreview(options);
+        });
+        appContext.eventBus.subscribe<ExtendPatternOptions>('extend:pattern-save-requested', async options => {
+            if (!extendPatternActive || !appContext || options?.method !== 'linear' || !Number.isInteger(options?.count) || options.count < 1) return;
+            const pattern = buildExtendPatternCopies(options);
+            if (!pattern) {
+                appContext.eventBus.publish('extend:pattern-cancel-requested');
+                return;
+            }
+
+            try {
+                if (pattern.selected.length === 2) {
+                    const movedSeed = pattern.selected[options.swapDirection ? 0 : 1];
+                    const position = {
+                        x: options.start.position.x + options.step.position.x,
+                        y: options.start.position.y + options.step.position.y,
+                        z: options.start.position.z + options.step.position.z,
+                        rotation: options.start.rotation.y + options.step.rotation.y
+                    };
+                    await appContext.appService.execute({
+                        type: 'UpdateDecorationsCommand',
+                        payload: {
+                            updates: [{
+                                layerId: movedSeed.layer.id,
+                                decorationId: movedSeed.decoration.uid,
+                                position,
+                                rotation: position.rotation,
+                                rotX: options.start.rotation.x + options.step.rotation.x,
+                                rotZ: options.start.rotation.z + options.step.rotation.z
+                            }]
+                        }
+                    });
+                }
+                await appContext.appService.execute({
+                    type: 'CopyDecorationsCommand',
+                    payload: {
+                        targetLayerId: pattern.targetLayer.id,
+                        copies: pattern.copies.map(({ decorationId, position, rotation, rotX, rotZ }) => ({ decorationId, position, rotation, rotX, rotZ }))
+                    }
+                });
+                mapViewer?.setExtendPatternPreview([]);
+                extendPatternActive = false;
+                globalZoomHandler?.setInteractionsEnabled(true);
+                extendPatternPreviousTransform = null;
+                appContext.eventBus.publish('extend:pattern-completed');
+            } catch (error) {
+                console.error('[ExtendDecorationPattern] Failed to create pattern copies:', error);
+                appContext.eventBus.publish('extend:pattern-cancel-requested');
+                alert(`Could not extend decoration pattern: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        });
+        appContext.eventBus.subscribe('extend:pattern-cancel-requested', () => {
+            if (!extendPatternActive) return;
+            extendPatternActive = false;
+            mapViewer?.setExtendPatternPreview([]);
+            globalZoomHandler?.setInteractionsEnabled(true);
+            if (extendPatternPreviousTransform) globalZoomHandler?.setTransform(extendPatternPreviousTransform);
+            extendPatternPreviousTransform = null;
+        });
+        appContext.eventBus.subscribe('fill:pattern-start-requested', () => {
+            const selected = getSelectedPattern();
+            if (!globalZoomHandler || !appContext || moveSelectedActive || patternInteractionActive() || selected?.length !== 2) return;
+            const toValues = (decoration: any): ExtendPatternValues => ({
+                position: { x: decoration.position.x, y: decoration.position.y, z: decoration.position.z ?? 0 },
+                rotation: { x: decoration.rotX ?? 0, y: decoration.rotation ?? 0, z: decoration.rotZ ?? 0 }
+            });
+            const first = toValues(selected[0].decoration);
+            const second = toValues(selected[1].decoration);
+            fillPatternActive = true;
+            globalZoomHandler.setInteractionsEnabled(false);
+            appContext.eventBus.publish('fill:pattern-seed-values-changed', { start: first, end: second });
+            updateFillPatternPreview(1, selected, first, second);
+        });
+        const updateFillPatternPreview = (count: number, selected: Array<{ layer: any; decoration: any }>, start: ExtendPatternValues, end: ExtendPatternValues) => {
+            const copies = Array.from({ length: count }, (_, index) => {
+                const fraction = (index + 1) / (count + 1);
+                return {
+                    uid: `fill-pattern-preview-${index}`,
+                    name: selected[0].decoration.name,
+                    color: selected[0].layer.color,
+                    position: {
+                        x: start.position.x + (end.position.x - start.position.x) * fraction,
+                        y: start.position.y + (end.position.y - start.position.y) * fraction
+                    }
+                };
+            });
+            const guidePoints = [
+                ...selected.map(item => item.decoration.position),
+                ...copies.map(copy => copy.position)
+            ];
+            mapViewer?.setExtendPatternPreview(copies, guidePoints);
+            fitPatternToScreen([
+                ...selected.map(item => item.decoration.position),
+                ...copies.map(copy => copy.position)
+            ]);
+        };
+        const getFillPattern = (count: number) => {
+            const selected = getSelectedPattern();
+            if (!selected || selected.length !== 2) return null;
+            const first = selected[0].decoration;
+            const second = selected[1].decoration;
+            const start: ExtendPatternValues = {
+                position: { x: first.position.x, y: first.position.y, z: first.position.z ?? 0 },
+                rotation: { x: first.rotX ?? 0, y: first.rotation ?? 0, z: first.rotZ ?? 0 }
+            };
+            const end: ExtendPatternValues = {
+                position: { x: second.position.x, y: second.position.y, z: second.position.z ?? 0 },
+                rotation: { x: second.rotX ?? 0, y: second.rotation ?? 0, z: second.rotZ ?? 0 }
+            };
+            const copies = Array.from({ length: count }, (_, index) => {
+                const fraction = (index + 1) / (count + 1);
+                return {
+                    decorationId: first.uid,
+                    position: {
+                        x: start.position.x + (end.position.x - start.position.x) * fraction,
+                        y: start.position.y + (end.position.y - start.position.y) * fraction,
+                        z: start.position.z + (end.position.z - start.position.z) * fraction
+                    },
+                    rotation: start.rotation.y + (end.rotation.y - start.rotation.y) * fraction,
+                    rotX: start.rotation.x + (end.rotation.x - start.rotation.x) * fraction,
+                    rotZ: start.rotation.z + (end.rotation.z - start.rotation.z) * fraction
+                };
+            });
+            return { selected, copies, start, end };
+        };
+        appContext.eventBus.subscribe<{ count: number }>('fill:pattern-options-changed', options => {
+            if (!fillPatternActive || !Number.isInteger(options?.count) || options.count < 1) return;
+            const pattern = getFillPattern(options.count);
+            if (pattern) updateFillPatternPreview(options.count, pattern.selected, pattern.start, pattern.end);
+        });
+        appContext.eventBus.subscribe<{ count: number }>('fill:pattern-save-requested', async options => {
+            if (!fillPatternActive || !appContext || !Number.isInteger(options?.count) || options.count < 1) return;
+            const pattern = getFillPattern(options.count);
+            if (!pattern) {
+                appContext.eventBus.publish('fill:pattern-cancel-requested');
+                return;
+            }
+            try {
+                await appContext.appService.execute({
+                    type: 'CopyDecorationsCommand',
+                    payload: {
+                        targetLayerId: pattern.selected[0].layer.id,
+                        copies: pattern.copies
+                    }
+                });
+                mapViewer?.setExtendPatternPreview([]);
+                fillPatternActive = false;
+                globalZoomHandler?.setInteractionsEnabled(true);
+                appContext.eventBus.publish('fill:pattern-completed');
+            } catch (error) {
+                console.error('[FillDecorationPattern] Failed to create pattern copies:', error);
+                appContext.eventBus.publish('fill:pattern-cancel-requested');
+                alert(`Could not fill decoration pattern: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        });
+        appContext.eventBus.subscribe('fill:pattern-cancel-requested', () => {
+            if (!fillPatternActive) return;
+            fillPatternActive = false;
+            mapViewer?.setExtendPatternPreview([]);
+            globalZoomHandler?.setInteractionsEnabled(true);
+        });
         appContext.eventBus.subscribe('zoom:in-requested', () => {
-            if (!globalZoomHandler || moveSelectedActive) return;
+            if (!globalZoomHandler || moveSelectedActive || patternInteractionActive()) return;
             const t = globalZoomHandler.getTransform();
             const svgEl = document.getElementById('map-container')?.querySelector('svg');
             if (!svgEl) return;
@@ -1417,7 +1738,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         appContext.eventBus.subscribe('zoom:out-requested', () => {
-            if (!globalZoomHandler || moveSelectedActive) return;
+            if (!globalZoomHandler || moveSelectedActive || patternInteractionActive()) return;
             const t = globalZoomHandler.getTransform();
             const svgEl = document.getElementById('map-container')?.querySelector('svg');
             if (!svgEl) return;
@@ -1438,7 +1759,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // T118: Re-fit map on window resize using container dimensions
     window.addEventListener('resize', () => {
-        if (!moveSelectedActive && isMapLoaded()) {
+        if (!moveSelectedActive && !patternInteractionActive() && isMapLoaded()) {
             resetZoom();
         }
     });
@@ -1447,7 +1768,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const chartContainerForObserver = document.getElementById('map-container');
     if (chartContainerForObserver && typeof ResizeObserver !== 'undefined') {
         const containerResizeObserver = new ResizeObserver(() => {
-            if (!moveSelectedActive && isMapLoaded()) {
+            if (!moveSelectedActive && !patternInteractionActive() && isMapLoaded()) {
                 resetZoom();
             }
         });

@@ -9,8 +9,22 @@ import { UndoRecord } from '../UndoRecord.js';
 import { UndoRedoManager } from '../UndoRedoManager.ts';
 
 type CopyDecorationsPayload = {
-    decorationIds: string[];
+    decorationIds?: string[];
+    copies?: Array<{
+        decorationId: string;
+        position: { x: number; y: number; z?: number; rotation?: number };
+        rotation?: number;
+        rotX?: number;
+        rotZ?: number;
+    }>;
     targetLayerId: string;
+};
+type CopyRequest = {
+    decorationId: string;
+    position?: { x: number; y: number; z?: number; rotation?: number };
+    rotation?: number;
+    rotX?: number;
+    rotZ?: number;
 };
 
 export class CopyDecorationsHandler {
@@ -23,8 +37,9 @@ export class CopyDecorationsHandler {
     }
 
     execute(command: CopyDecorationsPayload): { success: boolean; copied: number; decorationIds: string[] } {
-        const { decorationIds, targetLayerId } = command;
-        if (!Array.isArray(decorationIds) || decorationIds.length === 0) {
+        const { decorationIds = [], copies: requestedCopies, targetLayerId } = command;
+        const copyRequests: CopyRequest[] = requestedCopies ?? Array.from(new Set(decorationIds)).map(decorationId => ({ decorationId }));
+        if (copyRequests.length === 0) {
             return { success: true, copied: 0, decorationIds: [] };
         }
 
@@ -33,37 +48,39 @@ export class CopyDecorationsHandler {
             throw new Error(`CopyDecorationsHandler: target layer "${targetLayerId}" not found`);
         }
 
-        const copies: Decoration[] = [];
-        for (const decorationId of new Set(decorationIds)) {
-            const sourceLayer = this.layout.getDecorationLayer(decorationId);
-            const source = sourceLayer?.getDecoration(decorationId);
+        const createdCopies: Decoration[] = [];
+        for (const request of copyRequests) {
+            const sourceLayer = this.layout.getDecorationLayer(request.decorationId);
+            const source = sourceLayer?.getDecoration(request.decorationId);
             if (!source) continue;
 
-            let copy = Decoration.create(source.id, source.name, source.position, source.rotation, source.scale);
-            copy.rotX = source.rotX;
-            copy.rotZ = source.rotZ;
+            const position = request.position ?? source.position;
+            const rotation = request.rotation ?? source.rotation;
+            let copy = Decoration.create(source.id, source.name, position, rotation, source.scale);
+            copy.rotX = request.rotX ?? source.rotX;
+            copy.rotZ = request.rotZ ?? source.rotZ;
             while (this.layout.getAllLayers().some(layer => layer.getDecoration(copy.uid))) {
-                copy = Decoration.create(source.id, source.name, source.position, source.rotation, source.scale);
-                copy.rotX = source.rotX;
-                copy.rotZ = source.rotZ;
+                copy = Decoration.create(source.id, source.name, position, rotation, source.scale);
+                copy.rotX = request.rotX ?? source.rotX;
+                copy.rotZ = request.rotZ ?? source.rotZ;
             }
 
             this.layout.addDecorationToLayer(targetLayerId, copy);
             this.layout.addEvent(new DecorationAddedEvent(this.layout.id, targetLayerId, copy));
-            copies.push(copy);
+            createdCopies.push(copy);
         }
 
-        if (this.undoRedoManager && copies.length > 0) {
-            const copiedIds = copies.map(copy => copy.uid);
+        if (this.undoRedoManager && createdCopies.length > 0) {
+            const copiedIds = createdCopies.map(copy => copy.uid);
             this.undoRedoManager.push(new UndoRecord({
-                label: `Copy ${copies.length} decoration${copies.length > 1 ? 's' : ''} to ${targetLayer.name}`,
+                label: `Copy ${createdCopies.length} decoration${createdCopies.length > 1 ? 's' : ''} to ${targetLayer.name}`,
                 commandType: 'CopyDecorationsCommand',
-                forwardData: { targetLayerId, decorations: copies.map(copy => copy.toDTO()) },
+                forwardData: { targetLayerId, decorations: createdCopies.map(copy => copy.toDTO()) },
                 reverseData: { decorationIds: copiedIds }
             }));
         }
 
-        return { success: true, copied: copies.length, decorationIds: copies.map(copy => copy.uid) };
+        return { success: true, copied: createdCopies.length, decorationIds: createdCopies.map(copy => copy.uid) };
     }
 }
 

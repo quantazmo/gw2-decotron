@@ -45,4 +45,30 @@ describe('CopyDecorationsHandler', () => {
         expect(() => handler.execute({ decorationIds: ['missing'], targetLayerId: 'unknown' }))
             .toThrow('target layer "unknown" not found');
     });
+
+    test('creates an explicitly positioned copy for pattern generation', () => {
+        const layout = new HomesteadLayout('layout-1', 'Layout');
+        const sourceLayer = new Layer('source', 'Source');
+        const source = Decoration.create('oak', 'Oak', new WorldCoordinate(10, 20, 3), 45, 2);
+        sourceLayer.addDecoration(source);
+        layout.addLayer(sourceLayer);
+
+        const result = new CopyDecorationsHandler(layout).execute({
+            copies: [{
+                decorationId: source.uid,
+                position: { x: 30, y: 50, z: 7 },
+                rotation: 0.8,
+                rotX: 0.4,
+                rotZ: 1.2
+            }],
+            targetLayerId: sourceLayer.id
+        });
+
+        const copy = sourceLayer.getDecoration(result.decorationIds[0])!;
+        expect(copy.position.toObject()).toEqual({ x: 30, y: 50, z: 7, rotation: 0 });
+        expect(copy.id).toBe(source.id);
+        expect(copy.rotation).toBe(0.8);
+        expect(copy.rotX).toBe(0.4);
+        expect(copy.rotZ).toBe(1.2);
+    });
 });

@@ -115,6 +115,7 @@ describe('RibbonToolbar', () => {
         ]) {
             const button = el.querySelector(`[data-action="${action}"]`);
             expect(button.disabled).toBe(true);
+            expect(button.hidden).toBe(action === 'ribbon-rotate-selected');
             expect(button.closest('[data-group="create"]')).toBe(groups[4]);
         }
         const githubLink = el.querySelector('[data-action="ribbon-github"]');
@@ -160,7 +161,8 @@ describe('RibbonToolbar', () => {
 
         expect(moveButton.title).toBe('Move Selected');
         expect(rotateButton.title).toBe('Rotate Selected');
-        expect(duplicatorButton.title).toContain('exactly 2 decorations of the same type');
+        expect(rotateButton.hidden).toBe(true);
+        expect(duplicatorButton.title).toContain('1 or 2 decorations of the same type');
         expect(fillButton.title).toContain('exactly 2 decorations of the same type');
 
         expect(moveButton.disabled).toBe(true);
@@ -169,6 +171,8 @@ describe('RibbonToolbar', () => {
         selectionStore.setSelectedIds(['dec-1']);
         expect(moveButton.disabled).toBe(false);
         expect(rotateButton.disabled).toBe(false);
+        expect(duplicatorButton.disabled).toBe(false);
+        expect(fillButton.disabled).toBe(true);
 
         selectionStore.setSelectedIds(['dec-1', 'dec-2']);
         expect(moveButton.disabled).toBe(false);
@@ -185,18 +189,21 @@ describe('RibbonToolbar', () => {
         expect(rotateButton.disabled).toBe(false);
         expect(duplicatorButton.disabled).toBe(true);
         expect(fillButton.disabled).toBe(true);
+
+        selectionStore.setSelectedIds(['dec-1', 'dec-3']);
+        fillButton.click();
+        expect(eventBus.publish).toHaveBeenCalledWith('fill:pattern-start-requested');
+        eventBus.publish('fill:pattern-cancel-requested');
+        duplicatorButton.click();
+        expect(eventBus.publish).toHaveBeenCalledWith('extend:pattern-start-requested');
     });
 
-    test('Rotate Selected opens a coming-soon alert', () => {
+    test('Rotate Selected stays hidden until implemented', () => {
         const selectionStore = makeSelectionStore(['dec-1']);
-        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
         const toolbar = new RibbonToolbar(appService, appStore, zoomStore, eventBus, null, null, selectionStore);
         const rotateButton = toolbar.getElement().querySelector('[data-action="ribbon-rotate-selected"]');
 
-        rotateButton.click();
-
-        expect(alertSpy).toHaveBeenCalledWith('Coming soon!');
-        alertSpy.mockRestore();
+        expect(rotateButton.hidden).toBe(true);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -398,6 +405,34 @@ describe('RibbonToolbar', () => {
         eventBus.publish('move:selected-cancel-requested');
         expect(zoomInButton.disabled).toBe(false);
         expect(fitButton.disabled).toBe(false);
+    });
+
+    test('Extend Pattern disables navigation until the copy batch completes or is cancelled', () => {
+        const selectionStore = makeSelectionStore(['a', 'b']);
+        const decorations = new Map([
+            ['a', { id: 'same-type' }],
+            ['b', { id: 'same-type' }],
+        ]);
+        const layout = {
+            getDecorationLayer: vi.fn((decorationId: string) => ({
+                getDecoration: (id: string) => id === decorationId ? decorations.get(id) ?? null : null,
+            })),
+        };
+        const toolbar = new RibbonToolbar(appService, makeAppStore(layout), zoomStore, eventBus, null, null, selectionStore);
+        const extendButton = toolbar.getElement().querySelector('[data-action="ribbon-extend-decorations"]');
+        const zoomInButton = toolbar.getElement().querySelector('[data-action="ribbon-zoom-in"]');
+
+        extendButton.click();
+        expect(eventBus.publish).toHaveBeenCalledWith('extend:pattern-start-requested');
+        expect(zoomInButton.disabled).toBe(true);
+        eventBus.publish('extend:pattern-save-requested', { count: 1, swapDirection: false });
+        expect(zoomInButton.disabled).toBe(true);
+        eventBus.publish('extend:pattern-completed');
+        expect(zoomInButton.disabled).toBe(false);
+
+        extendButton.click();
+        eventBus.publish('extend:pattern-cancel-requested');
+        expect(zoomInButton.disabled).toBe(false);
     });
 
     test('Undo button publishes undo:requested when canUndo is true (lines 243-246)', () => {

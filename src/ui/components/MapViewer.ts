@@ -77,6 +77,15 @@ interface MapViewerDecoration {
     position: { x: number; y: number };
 }
 
+type ExtendPatternPreviewDecoration = {
+    uid: string;
+    name: string;
+    color?: string;
+    position: { x: number; y: number };
+    sourceDecorationId?: string;
+};
+type PatternGuidePoint = { x: number; y: number };
+
 interface MapViewerLayer {
     id: string;
     name: string;
@@ -126,6 +135,10 @@ class MapViewer {
     private _moveCopyPreviewGroup!: SVGGElement;
     private _moveCopyCircles = new Map<string, SVGCircleElement>();
     private _moveCopyTargetLayerId: string | null = null;
+    private _extendPatternPreviewGroup!: SVGGElement;
+    private _extendPatternPreviews: ExtendPatternPreviewDecoration[] = [];
+    private _extendPatternGuidePoints: PatternGuidePoint[] = [];
+    private _extendPatternHiddenSourceId: string | null = null;
     private _eventBus: MoveEventBusLike | null = null;
 
     constructor(svgElement: SVGSVGElement, zoomStore: ZoomStoreLike, appStore: AppStoreLike, selectionStore: SelectionStoreLike | null) {
@@ -187,6 +200,7 @@ class MapViewer {
         this.layersGroup = renderHelpers.createGroup({ className: 'layers' });
         this.decorationsGroup = renderHelpers.createGroup({ className: 'decorations' });
         this._moveCopyPreviewGroup = renderHelpers.createGroup({ className: 'move-copy-previews' });
+        this._extendPatternPreviewGroup = renderHelpers.createGroup({ className: 'extend-pattern-previews' });
 
         // Append to the container group instead of directly to SVG
         containerGroup.appendChild(this.tileGroup);
@@ -194,6 +208,7 @@ class MapViewer {
         containerGroup.appendChild(this.layersGroup);
         containerGroup.appendChild(this.decorationsGroup);
         containerGroup.appendChild(this._moveCopyPreviewGroup);
+        containerGroup.appendChild(this._extendPatternPreviewGroup);
 
         // Bind click handlers for decoration selection
         this._bindSelectionHandlers();
@@ -239,6 +254,7 @@ class MapViewer {
             this.updateTilePositions(this.currentMap);
             this.updateBoundaryPosition(this.currentMap);
             this.updateDecorationPositions(this.currentLayers);
+            this._renderExtendPatternPreview();
         }
     }
 
@@ -269,6 +285,7 @@ class MapViewer {
         this.renderLayers(state.layers);
         this.updateDecorationPositions(this.currentLayers);
         this._renderMoveCopyPreview();
+        this._renderExtendPatternPreview();
     }
 
     /**
@@ -564,12 +581,15 @@ class MapViewer {
      * Clear all rendered content
      */
     clear(): void {
+        this._restoreExtendPatternSource();
         domHelpers.empty(this.tileGroup);
         domHelpers.empty(this.boundaryGroup);
         domHelpers.empty(this.layersGroup);
         domHelpers.empty(this.decorationsGroup);
         domHelpers.empty(this._moveCopyPreviewGroup);
+        domHelpers.empty(this._extendPatternPreviewGroup);
         this._moveCopyCircles.clear();
+        this._extendPatternPreviews = [];
 
         // Clear caches
         this.currentMap = null;
@@ -1193,6 +1213,56 @@ class MapViewer {
         return layer.getAllDecorations?.() ?? (layer.decorations instanceof Map
             ? Array.from(layer.decorations.values())
             : layer.decorations ?? []);
+    }
+
+    setExtendPatternPreview(decorations: ExtendPatternPreviewDecoration[], guidePoints: PatternGuidePoint[] = []): void {
+        this._restoreExtendPatternSource();
+        this._extendPatternPreviews = decorations.map(decoration => ({ ...decoration, position: { ...decoration.position } }));
+        this._extendPatternGuidePoints = guidePoints.map(point => ({ ...point }));
+        this._extendPatternHiddenSourceId = decorations.find(decoration => decoration.sourceDecorationId)?.sourceDecorationId ?? null;
+        this._renderExtendPatternPreview();
+    }
+
+    _restoreExtendPatternSource(): void {
+        if (this._extendPatternHiddenSourceId) {
+            this.decorationCircles.get(this._extendPatternHiddenSourceId)?.classList.remove('extend-pattern-source-hidden');
+        }
+        this._extendPatternHiddenSourceId = null;
+    }
+
+    _renderExtendPatternPreview(): void {
+        domHelpers.empty(this._extendPatternPreviewGroup);
+        if ((this._extendPatternPreviews.length === 0 && this._extendPatternGuidePoints.length === 0) || !window.xZoom || !window.yZoom) return;
+        if (this._extendPatternHiddenSourceId) {
+            this.decorationCircles.get(this._extendPatternHiddenSourceId)?.classList.add('extend-pattern-source-hidden');
+        }
+
+        const guidePoints = this._extendPatternGuidePoints.map(point => ({
+            x: window.xZoom!(point.x),
+            y: window.yZoom!(point.y)
+        })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+        if (guidePoints.length > 1) {
+            const guideLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            guideLine.setAttribute('class', 'extend-pattern-guide-line');
+            guideLine.setAttribute('d', guidePoints.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' '));
+            guideLine.setAttribute('fill', 'none');
+            guideLine.setAttribute('pointer-events', 'none');
+            this._extendPatternPreviewGroup.appendChild(guideLine);
+        }
+
+        for (const decoration of this._extendPatternPreviews) {
+            const circle = this.createDecorationElement(decoration, decoration.color);
+            if (!circle) continue;
+            circle.classList.add('extend-pattern-preview');
+            circle.removeAttribute('data-decoration-id');
+            circle.setAttribute('pointer-events', 'none');
+            if (decoration.sourceDecorationId) {
+                circle.setAttribute('data-preview-source-id', decoration.sourceDecorationId);
+            }
+            circle.setAttribute('cx', String(window.xZoom(decoration.position.x)));
+            circle.setAttribute('cy', String(window.yZoom(decoration.position.y)));
+            this._extendPatternPreviewGroup.appendChild(circle);
+        }
     }
 
     _renderMoveCopyPreview(): void {

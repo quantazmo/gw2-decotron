@@ -489,6 +489,80 @@ describe('MapViewer', () => {
         });
     });
 
+    describe('extend pattern previews', () => {
+        it('renders pending copies distinctly and clears them without adding decoration hit targets', () => {
+            const svg = makeSvg();
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(), makeSelectionStore());
+
+            viewer.setExtendPatternPreview([{
+                uid: 'extend-pattern-preview-0',
+                name: 'Pending Oak',
+                color: '#318a55',
+                position: { x: 120, y: 240 },
+            }], [{ x: 100, y: 200 }, { x: 120, y: 240 }]);
+
+            const previewGroup = svg.querySelector('.extend-pattern-previews');
+            const guide = previewGroup.firstElementChild;
+            const preview = svg.querySelector('.extend-pattern-previews .extend-pattern-preview');
+            expect(guide.classList.contains('extend-pattern-guide-line')).toBe(true);
+            expect(guide.getAttribute('d')).toBe('M100,200 L120,240');
+            expect(guide.nextElementSibling).toBe(preview);
+            expect(preview).not.toBeNull();
+            expect(preview.getAttribute('cx')).toBe('120');
+            expect(preview.getAttribute('cy')).toBe('240');
+            expect(preview.getAttribute('data-decoration-id')).toBeNull();
+            expect(preview.getAttribute('pointer-events')).toBe('none');
+
+            viewer.setExtendPatternPreview([]);
+            expect(svg.querySelector('.extend-pattern-preview')).toBeNull();
+            expect(svg.querySelector('.extend-pattern-guide-line')).toBeNull();
+        });
+
+        it('temporarily moves the non-start seed and restores originals when swapped or cleared', () => {
+            const svg = makeSvg();
+            const viewer = new MapViewer(svg, makeZoomStore(), makeAppStore(), makeSelectionStore());
+            const seeds = [
+                { uid: 'seed-a', name: 'Oak A', position: { x: 10, y: 20 }, color: '#318a55' },
+                { uid: 'seed-b', name: 'Oak B', position: { x: 30, y: 40 }, color: '#318a55' }
+            ];
+            viewer.render({
+                map: makeMap(1),
+                layers: [{ id: 'layer-1', isVisible: true, color: '#318a55', decorations: seeds }]
+            });
+
+            const originalA = svg.querySelector('[data-decoration-id="seed-a"]');
+            const originalB = svg.querySelector('[data-decoration-id="seed-b"]');
+            viewer.setExtendPatternPreview([{
+                uid: 'extend-pattern-moved-seed-preview',
+                name: 'Oak B',
+                color: '#318a55',
+                position: { x: 50, y: 60 },
+                sourceDecorationId: 'seed-b'
+            }]);
+
+            expect(originalA.classList.contains('extend-pattern-source-hidden')).toBe(false);
+            expect(originalB.classList.contains('extend-pattern-source-hidden')).toBe(true);
+            const movedPreview = svg.querySelector('[data-preview-source-id="seed-b"]');
+            expect(movedPreview.getAttribute('cx')).toBe('50');
+            expect(movedPreview.getAttribute('data-decoration-id')).toBeNull();
+
+            viewer.setExtendPatternPreview([{
+                uid: 'extend-pattern-moved-seed-preview',
+                name: 'Oak A',
+                color: '#318a55',
+                position: { x: 10, y: 20 },
+                sourceDecorationId: 'seed-a'
+            }]);
+            expect(originalA.classList.contains('extend-pattern-source-hidden')).toBe(true);
+            expect(originalB.classList.contains('extend-pattern-source-hidden')).toBe(false);
+
+            viewer.setExtendPatternPreview([]);
+            expect(originalA.classList.contains('extend-pattern-source-hidden')).toBe(false);
+            expect(originalB.classList.contains('extend-pattern-source-hidden')).toBe(false);
+            expect(svg.querySelector('.extend-pattern-preview')).toBeNull();
+        });
+    });
+
     describe('pan drag preserves selection', () => {
         it('does not clear selection when a drag (pan) precedes the click on empty area', () => {
             const svg = makeSvg();

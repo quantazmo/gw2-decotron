@@ -148,6 +148,29 @@ body {
   border: 2px dashed #4496ff;
 }
 
+.move-selected-hint {
+  position: absolute;
+  z-index: 5;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.move-selected-hint[hidden] {
+  display: none;
+}
+
 /* ============================================================
    WELCOME DIALOG — shown in map-container before a file loads
    ============================================================ */
@@ -512,6 +535,107 @@ svg {
   padding: 12px;
 }
 
+.extend-pattern-count-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.extend-pattern-method-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.extend-pattern-field-grid {
+  display: grid;
+  grid-template-columns: minmax(78px, 1fr) repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 7px 8px;
+  margin-top: 6px;
+}
+
+.extend-pattern-grid-header {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.extend-pattern-field-label {
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.extend-pattern-value-input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.extend-pattern-value-input:read-only {
+  color: var(--text-secondary);
+}
+
+.extend-pattern-method-select {
+  width: 100%;
+  max-width: 220px;
+  height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+
+.extend-pattern-count-input {
+  width: 100%;
+  max-width: 120px;
+  height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+  box-sizing: border-box;
+}
+
+.extend-pattern-swap-start-button {
+  align-self: flex-start;
+  min-height: 32px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.extend-pattern-swap-start-button:hover {
+  background: var(--hover-list-bg);
+}
+
 .create-panel-hint {
   margin: 0;
   color: var(--text-secondary);
@@ -623,6 +747,25 @@ svg {
 .move-copy-preview {
   opacity: 0.55 !important;
   stroke-dasharray: 3 2;
+}
+
+.extend-pattern-preview {
+  opacity: 0.95 !important;
+  stroke: #ffd166;
+  stroke-width: 2.5;
+  stroke-dasharray: 2 2;
+}
+
+.extend-pattern-guide-line {
+  stroke: #ffd166;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  opacity: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.extend-pattern-source-hidden {
+  visibility: hidden !important;
 }
 
 /* Tab group */
@@ -1280,6 +1423,10 @@ button:active {
   color: var(--text-primary);
   cursor: pointer;
   transition: background-color 0.1s, border-color 0.1s;
+}
+
+.ribbon-btn[hidden] {
+  display: none;
 }
 
 .ribbon-btn svg {

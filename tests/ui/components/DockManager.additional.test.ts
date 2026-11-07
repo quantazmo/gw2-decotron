@@ -78,6 +78,10 @@ describe('DockManager — additional coverage', () => {
     });
 
     test('shows the Create panel during move mode and restores the normal panels on cancel and save', () => {
+        const moveHint = document.createElement('div');
+        moveHint.className = 'move-selected-hint';
+        moveHint.hidden = true;
+        panelContentMap.map.appendChild(moveHint);
         const appStore = {
             getState: () => ({
                 layout: null,
@@ -90,6 +94,7 @@ describe('DockManager — additional coverage', () => {
         dm.mount();
 
         eventBus.publish('move:selected-start-requested');
+        expect(moveHint.hidden).toBe(false);
         expect(rootElement.querySelector('[data-panel-id="create"]')).not.toBeNull();
         expect(rootElement.querySelector('[data-panel-id="create"] .dock-region-title-text').textContent).toBe('Move Selected');
         expect(Array.from(rootElement.querySelectorAll('.create-panel-actions button')).map(button => button.textContent)).toEqual(['Save', 'Cancel']);
@@ -125,16 +130,134 @@ describe('DockManager — additional coverage', () => {
         expect(requestedTarget).toBe('layer-1');
 
         rootElement.querySelector('.create-panel-cancel').click();
+        expect(moveHint.hidden).toBe(true);
         expect(rootElement.querySelector('[data-panel-id="create"]')).toBeNull();
         expect(rootElement.querySelector('[data-panel-id="layers"]')).not.toBeNull();
         expect(rootElement.querySelector('[data-panel-id="decorationList"]')).not.toBeNull();
 
         eventBus.publish('move:selected-start-requested');
+        expect(moveHint.hidden).toBe(false);
         rootElement.querySelector('.create-panel-save').click();
+        expect(moveHint.hidden).toBe(true);
         expect(rootElement.querySelector('[data-panel-id="create"]')).toBeNull();
         expect(rootElement.querySelector('[data-panel-id="layers"]')).not.toBeNull();
         expect(rootElement.querySelector('[data-panel-id="decorationList"]')).not.toBeNull();
 
+        dm.unmount();
+    });
+
+    test('shows read-only Start and editable Offset fields, publishes pattern values, and restores panels on cancel', () => {
+        const selectedIds = ['seed-a', 'seed-b'];
+        const selectionStore = { getSelectedIds: () => selectedIds };
+        const dm = new DockManager(rootElement, layoutStore, panelContentMap, null, eventBus, makeFakeAppStore(), null, null, null, selectionStore);
+        dm.mount();
+
+        eventBus.publish('extend:pattern-start-requested');
+        expect(rootElement.querySelector('[data-panel-id="create"] .dock-region-title-text').textContent).toBe('Extend Decoration Pattern');
+        expect(rootElement.querySelector('[data-panel-id="layers"]')).toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="decorationList"]')).toBeNull();
+        const countInput = rootElement.querySelector('.extend-pattern-count-input');
+        const swapStartButton = rootElement.querySelector('.extend-pattern-swap-start-button');
+        const methodSelect = rootElement.querySelector('.extend-pattern-method-select');
+        expect(countInput.value).toBe('1');
+        expect(countInput.min).toBe('1');
+        expect(swapStartButton.hidden).toBe(false);
+        expect(swapStartButton.textContent).toBe('Swap Start Decoration');
+        expect(swapStartButton.getAttribute('aria-pressed')).toBe('false');
+        expect(methodSelect.options).toHaveLength(1);
+        expect(methodSelect.value).toBe('linear');
+        const startX = rootElement.querySelector('[data-role="start"][data-group="position"][data-axis="x"]');
+        const stepX = rootElement.querySelector('[data-role="step"][data-group="position"][data-axis="x"]');
+        expect(startX.getAttribute('aria-label')).toBe('Start position x');
+        expect(startX.readOnly).toBe(true);
+        expect(stepX.readOnly).toBe(false);
+        expect(stepX.getAttribute('aria-label')).toBe('Offset position x');
+        expect(rootElement.querySelector('.extend-pattern-grid-header:nth-child(2)').textContent).toBe('Start');
+        expect(rootElement.querySelector('.extend-pattern-grid-header:nth-child(3)').textContent).toBe('Offset');
+
+        eventBus.publish('extend:pattern-seed-values-changed', {
+            start: { position: { x: 10, y: 20, z: 30 }, rotation: { x: 1, y: 2, z: 3 } },
+            step: { position: { x: 4, y: 5, z: 6 }, rotation: { x: 0.1, y: 0.2, z: 0.3 } }
+        });
+        expect(startX.value).toBe('10');
+        expect(stepX.value).toBe('4');
+
+        const optionUpdates = [];
+        eventBus.subscribe('extend:pattern-options-changed', options => optionUpdates.push(options));
+        countInput.value = '3';
+        countInput.dispatchEvent(new Event('input', { bubbles: true }));
+        swapStartButton.click();
+        expect(optionUpdates).toEqual([
+            expect.objectContaining({ method: 'linear', count: 3, swapDirection: false }),
+            expect.objectContaining({ method: 'linear', count: 3, swapDirection: true })
+        ]);
+        expect(optionUpdates[0].start.position.x).toBe(10);
+        expect(optionUpdates[0].step.position.x).toBe(4);
+        expect(optionUpdates[1].start.position.x).toBe(14);
+        expect(optionUpdates[1].step.position.x).toBe(-4);
+        expect(swapStartButton.getAttribute('aria-pressed')).toBe('true');
+        swapStartButton.click();
+        expect(optionUpdates[2].start.position.x).toBe(10);
+        expect(optionUpdates[2].step.position.x).toBe(4);
+        expect(swapStartButton.getAttribute('aria-pressed')).toBe('false');
+        swapStartButton.click();
+
+        let saveRequest;
+        eventBus.subscribe('extend:pattern-save-requested', options => { saveRequest = options; });
+        countInput.value = '4';
+        rootElement.querySelector('.create-panel-save').click();
+        expect(saveRequest).toMatchObject({ method: 'linear', count: 4, swapDirection: true, step: { position: { x: -4 } } });
+        expect(rootElement.querySelector('[data-panel-id="create"]')).not.toBeNull();
+        eventBus.publish('extend:pattern-completed');
+        expect(rootElement.querySelector('[data-panel-id="layers"]')).not.toBeNull();
+
+        selectedIds.splice(1);
+        eventBus.publish('extend:pattern-start-requested');
+        expect(rootElement.querySelector('.extend-pattern-swap-start-button').hidden).toBe(true);
+        rootElement.querySelector('.create-panel-cancel').click();
+        expect(rootElement.querySelector('[data-panel-id="create"]')).toBeNull();
+        expect(rootElement.querySelector('[data-panel-id="decorationList"]')).not.toBeNull();
+        dm.unmount();
+    });
+
+    test('shows read-only fill offsets evenly divided by count plus one and publishes save requests', () => {
+        const dm = new DockManager(rootElement, layoutStore, panelContentMap, null, eventBus, makeFakeAppStore());
+        dm.mount();
+
+        eventBus.publish('fill:pattern-start-requested');
+        expect(rootElement.querySelector('[data-panel-id="create"] .dock-region-title-text').textContent).toBe('Fill Decoration Pattern');
+        const methodSelect = rootElement.querySelector('.fill-pattern-method-select');
+        const countInput = rootElement.querySelector('.fill-pattern-count-input');
+        expect(methodSelect.getAttribute('aria-label')).toBe('Method');
+        expect(methodSelect.options).toHaveLength(1);
+        expect(methodSelect.value).toBe('linear');
+        expect(methodSelect.options[0].textContent).toBe('Linear');
+        expect(methodSelect.compareDocumentPosition(countInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const startX = rootElement.querySelector('[data-role="start"][data-group="position"][data-axis="x"]');
+        const offsetX = rootElement.querySelector('[data-role="step"][data-group="position"][data-axis="x"]');
+        expect(startX.readOnly).toBe(true);
+        expect(offsetX.readOnly).toBe(true);
+
+        eventBus.publish('fill:pattern-seed-values-changed', {
+            start: { position: { x: 10, y: 20, z: 30 }, rotation: { x: 1, y: 2, z: 3 } },
+            end: { position: { x: 30, y: 60, z: 70 }, rotation: { x: 5, y: 10, z: 15 } }
+        });
+        expect(startX.value).toBe('10');
+        expect(offsetX.value).toBe('10');
+
+        const optionUpdates = [];
+        eventBus.subscribe('fill:pattern-options-changed', options => optionUpdates.push(options));
+        countInput.value = '3';
+        countInput.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(offsetX.value).toBe('5');
+        expect(optionUpdates).toEqual([{ count: 3 }]);
+
+        let saveRequest;
+        eventBus.subscribe('fill:pattern-save-requested', options => { saveRequest = options; });
+        rootElement.querySelector('.create-panel-save').click();
+        expect(saveRequest).toEqual({ count: 3 });
+        eventBus.publish('fill:pattern-completed');
+        expect(rootElement.querySelector('[data-panel-id="create"]')).toBeNull();
         dm.unmount();
     });
 

@@ -63,9 +63,11 @@ test.describe('Tool Modes', () => {
 
         const panBtn = page.locator('[data-action="tool-pan"]');
         const selectBtn = page.locator('[data-action="tool-select"]');
+        const rotateBtn = page.locator('[data-action="ribbon-rotate-selected"]');
 
         await expect(panBtn).toBeVisible();
         await expect(selectBtn).toBeVisible();
+        await expect(rotateBtn).toBeHidden();
         await expect(panBtn).toHaveAttribute('aria-pressed', 'true');
         await expect(selectBtn).toHaveAttribute('aria-pressed', 'false');
 

@@ -165,12 +165,13 @@ export class RibbonToolbar {
             this._makeBtn('Rotate Selected', 'ribbon-rotate-selected', () => window.alert('Coming soon!'), btn => {
                 this._rotateSelectedBtn = btn;
                 btn.title = 'Rotate Selected';
+                btn.hidden = true;
             }),
-            this._makeBtn('Extend Decoration Pattern', 'ribbon-extend-decorations', () => { }, btn => {
+            this._makeBtn('Extend Decoration Pattern', 'ribbon-extend-decorations', () => this._onExtendPattern(), btn => {
                 this._extendDecorationsBtn = btn;
-                btn.title = 'Extend Decoration Pattern (select exactly 2 decorations of the same type)';
+                btn.title = 'Extend Decoration Pattern (select 1 or 2 decorations of the same type)';
             }),
-            this._makeBtn('Fill Decoration Pattern', 'ribbon-fill-decorations', () => { }, btn => {
+            this._makeBtn('Fill Decoration Pattern', 'ribbon-fill-decorations', () => this._onFillPattern(), btn => {
                 this._fillDecorationsBtn = btn;
                 btn.title = 'Fill Decoration Pattern (select exactly 2 decorations of the same type)';
             }),
@@ -217,7 +218,13 @@ export class RibbonToolbar {
             const startUnsub = this._eventBus.subscribe('move:selected-start-requested', () => this._setNavigationEnabled(false));
             const saveUnsub = this._eventBus.subscribe('move:selected-save-requested', () => this._setNavigationEnabled(true));
             const cancelUnsub = this._eventBus.subscribe('move:selected-cancel-requested', () => this._setNavigationEnabled(true));
-            this._unsubscribers.push(startUnsub, saveUnsub, cancelUnsub);
+            const extendStartUnsub = this._eventBus.subscribe('extend:pattern-start-requested', () => this._setNavigationEnabled(false));
+            const extendSaveUnsub = this._eventBus.subscribe('extend:pattern-completed', () => this._setNavigationEnabled(true));
+            const extendCancelUnsub = this._eventBus.subscribe('extend:pattern-cancel-requested', () => this._setNavigationEnabled(true));
+            const fillStartUnsub = this._eventBus.subscribe('fill:pattern-start-requested', () => this._setNavigationEnabled(false));
+            const fillSaveUnsub = this._eventBus.subscribe('fill:pattern-completed', () => this._setNavigationEnabled(true));
+            const fillCancelUnsub = this._eventBus.subscribe('fill:pattern-cancel-requested', () => this._setNavigationEnabled(true));
+            this._unsubscribers.push(startUnsub, saveUnsub, cancelUnsub, extendStartUnsub, extendSaveUnsub, extendCancelUnsub, fillStartUnsub, fillSaveUnsub, fillCancelUnsub);
         }
     }
 
@@ -336,10 +343,10 @@ export class RibbonToolbar {
             const layer = state?.layout?.getDecorationLayer(decorationId);
             return layer?.getDecoration(decorationId) ?? null;
         });
-        const exactlyTwoOfSameType = selectedDecorations.length === 2 &&
+        const validExtendSelection = (selectedDecorations.length === 1 || selectedDecorations.length === 2) &&
             selectedDecorations[0] !== null &&
-            selectedDecorations[1] !== null &&
-            selectedDecorations[0].id === selectedDecorations[1].id;
+            selectedDecorations.every(decoration => decoration !== null && decoration.id === selectedDecorations[0]!.id);
+        const exactlyTwoOfSameType = selectedDecorations.length === 2 && validExtendSelection;
 
         if (this._exportBtn) {
             this._exportBtn.disabled = !hasLayout;
@@ -382,10 +389,10 @@ export class RibbonToolbar {
             this._rotateSelectedBtn.disabled = selectedCount === 0;
         }
         if (this._extendDecorationsBtn) {
-            this._extendDecorationsBtn.disabled = !exactlyTwoOfSameType;
+            this._extendDecorationsBtn.disabled = this._moveModeActive || !validExtendSelection;
         }
         if (this._fillDecorationsBtn) {
-            this._fillDecorationsBtn.disabled = !exactlyTwoOfSameType;
+            this._fillDecorationsBtn.disabled = this._moveModeActive || !exactlyTwoOfSameType;
         }
 
         // Sync tool mode toggle buttons
@@ -508,6 +515,8 @@ export class RibbonToolbar {
     _onFit(): void { this._eventBus?.publish('zoom:fit-requested'); }
     _onFitSelected(): void { this._eventBus?.publish('zoom:fit-selected-requested'); }
     _onMoveSelected(): void { this._eventBus?.publish('move:selected-start-requested'); }
+    _onExtendPattern(): void { this._eventBus?.publish('extend:pattern-start-requested'); }
+    _onFillPattern(): void { this._eventBus?.publish('fill:pattern-start-requested'); }
     _setNavigationEnabled(enabled: boolean): void {
         this._moveModeActive = !enabled;
         if (this._zoomInBtn) this._zoomInBtn.disabled = this._moveModeActive;
